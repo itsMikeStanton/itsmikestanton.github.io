@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>50 Bingo Cards (4 per Page)</title>
+
+  <style>
+      @media print {
+          .page {
+              page-break-after: always;
+          }
+      }
+
+      body {
+          margin: 0;
+          font-family: Arial, sans-serif;
+      }
+
+      .page {
+          height: 100vh;
+          padding: 20px;
+          box-sizing: border-box;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          grid-template-rows: 1fr 1fr;
+          gap: 20px;
+      }
+
+      .card-wrapper {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+      }
+
+      .card {
+          width: 100%;
+          max-width: 320px;
+          aspect-ratio: 1 / 1;
+          display: grid;
+          grid-template-rows: auto 1fr;
+      }
+
+      .header {
+          display: grid;
+          grid-template-columns: repeat(5, 1fr);
+      }
+
+      .header div {
+          background: #111;
+          color: white;
+          font-size: 22px;
+          font-weight: bold;
+          text-align: center;
+          aspect-ratio: 1 / 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+      }
+
+      .grid {
+          display: grid;
+          grid-template-columns: repeat(5, 1fr);
+          grid-template-rows: repeat(5, 1fr);
+      }
+
+      .cell {
+          border: 2px solid #000;
+          aspect-ratio: 1 / 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 18px;
+          font-weight: bold;
+      }
+
+      .free img {
+          max-width: 80%;
+          max-height: 80%;
+      }
+
+      .card-id {
+          margin-top: 6px;
+          font-size: 12px;
+      }
+  </style>
+</head>
+<body>
+
+<script>
+  function getRandomNumbers(min, max, count) {
+    const nums = [];
+    while (nums.length < count) {
+      const n = Math.floor(Math.random() * (max - min + 1)) + min;
+      if (!nums.includes(n)) nums.push(n);
+    }
+    return nums;
+  }
+
+  function generateCard(cardNumber) {
+    const ranges = [
+      [1, 15],
+      [16, 30],
+      [31, 45],
+      [46, 60],
+      [61, 75]
+    ];
+
+    const columns = ranges.map(r => getRandomNumbers(r[0], r[1], 5));
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "card-wrapper";
+
+    const card = document.createElement("div");
+    card.className = "card";
+
+    const header = document.createElement("div");
+    header.className = "header";
+    ["B","I","N","G","O"].forEach(l => {
+      const d = document.createElement("div");
+      d.textContent = l;
+      header.appendChild(d);
+    });
+
+    const grid = document.createElement("div");
+    grid.className = "grid";
+
+    for (let row = 0; row < 5; row++) {
+      for (let col = 0; col < 5; col++) {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+
+        if (row === 2 && col === 2) {
+          cell.classList.add("free");
+          cell.innerHTML = `<img src="center-image.png" alt="FREE">`;
+        } else {
+          cell.textContent = columns[col][row];
+        }
+
+        grid.appendChild(cell);
+      }
+    }
+
+    card.appendChild(header);
+    card.appendChild(grid);
+    wrapper.appendChild(card);
+
+    const id = document.createElement("div");
+    id.className = "card-id";
+    id.textContent = ``;//Card #${cardNumber}`;
+    wrapper.appendChild(id);
+
+    return wrapper;
+  }
+
+  // Generate 50 cards, grouped 4 per page
+  let currentPage;
+
+  for (let i = 1; i <= 50; i++) {
+    
+      currentPage = document.createElement("div");
+      currentPage.className = "page";
+      document.body.appendChild(currentPage);
+    
+    currentPage.appendChild(generateCard(i));
+  }
+</script>
+
+</body>
+</html>
