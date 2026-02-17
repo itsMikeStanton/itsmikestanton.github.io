@@ -65,30 +65,29 @@
         }
 
         function handleOrientation(event) {
-            // beta: front-to-back tilt in degrees
-            // face down is usually around -180 or 180 depending on the sensor
-            // straight up (vertical) is usually around 90
-            let tilt = event.beta; 
+    let tilt = event.beta; 
 
-            // FACE DOWN LOGIC (Black)
-            // When phone is flat on its face
-            if (Math.abs(tilt) < 20 && !isFaceDown) {
-                isFaceDown = true;
-                body.style.backgroundColor = "black";
-            } 
-            
-            // STRAIGHT UP LOGIC (White/Green Toggle)
-            // When phone is tilted up past 70 degrees
-            else if (Math.abs(tilt) > 70 && isFaceDown) {
-                isFaceDown = false;
-                if (isWhite) {
-                    body.style.backgroundColor = "green";
-                } else {
-                    body.style.backgroundColor = "white";
-                }
-                isWhite = !isWhite; // Toggle the state for next time
-            }
+    // FACE DOWN LOGIC (Black)
+    // Looking for values near 180 or -180 degrees
+    if (Math.abs(tilt) > 160 && !isFaceDown) {
+        isFaceDown = true;
+        body.style.backgroundColor = "black";
+    } 
+    
+    // STRAIGHT UP LOGIC (White/Green Toggle)
+    // Looking for values near 90 degrees (standing up)
+    else if (Math.abs(tilt - 90) < 20 && isFaceDown) {
+        isFaceDown = false;
+        
+        // Toggle the color
+        if (isWhite) {
+            body.style.backgroundColor = "green";
+        } else {
+            body.style.backgroundColor = "white";
         }
+        isWhite = !isWhite; 
+    }
+}
     </script>
 </body>
 </html>
