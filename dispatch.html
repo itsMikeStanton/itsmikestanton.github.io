@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Flip Toggle</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #222;
+            transition: background-color 0.2s ease;
+            font-family: sans-serif;
+            overflow: hidden;
+        }
+        #status {
+            color: gray;
+            text-align: center;
+            padding: 20px;
+        }
+        button {
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="status">
+        <button onclick="requestAccess()">Start App</button>
+        <p>Tap to enable sensors</p>
+    </div>
+
+    <script>
+        let isWhite = false;
+        let isFaceDown = false;
+        const body = document.body;
+        const statusDiv = document.getElementById('status');
+
+        function requestAccess() {
+            // Check for iOS 13+ permissions
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(response => {
+                        if (response == 'granted') {
+                            startTracking();
+                        }
+                    })
+                    .catch(console.error);
+            } else {
+                // Non-iOS or older devices
+                startTracking();
+            }
+        }
+
+        function startTracking() {
+            statusDiv.style.display = 'none';
+            window.addEventListener('deviceorientation', handleOrientation);
+        }
+
+        function handleOrientation(event) {
+            // beta: front-to-back tilt in degrees
+            // face down is usually around -180 or 180 depending on the sensor
+            // straight up (vertical) is usually around 90
+            let tilt = event.beta; 
+
+            // FACE DOWN LOGIC (Black)
+            // When phone is flat on its face
+            if (Math.abs(tilt) < 20 && !isFaceDown) {
+                isFaceDown = true;
+                body.style.backgroundColor = "black";
+            } 
+            
+            // STRAIGHT UP LOGIC (White/Green Toggle)
+            // When phone is tilted up past 70 degrees
+            else if (Math.abs(tilt) > 70 && isFaceDown) {
+                isFaceDown = false;
+                if (isWhite) {
+                    body.style.backgroundColor = "green";
+                } else {
+                    body.style.backgroundColor = "white";
+                }
+                isWhite = !isWhite; // Toggle the state for next time
+            }
+        }
+    </script>
+</body>
+</html>
