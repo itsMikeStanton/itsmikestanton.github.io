@@ -1,0 +1,18 @@
+{
+  "title": "[ ART ]",
+  "sub": "Visual work exploring systems, noise, and the space between signal and static.",
+  "collections": [
+    { "id": "IWABL",            "label": "i will always be lost", "desc": "portraits · 2010–2023", "path": "art/IWABL",            "cover": "alwaysbelost1200.jpg", "count": 15 },
+    { "id": "noise-studies",    "label": "noise studies",    "desc": "digital · 2023–2024",      "path": "art/noise-studies",    "cover": "cover.jpg", "count": 3 },
+    { "id": "static-portraits", "label": "static portraits",  "desc": "digital · 2024",           "path": "art/static-portraits", "cover": "cover.jpg", "count": 3 },
+    { "id": "signal-noise",     "label": "signal / noise",    "desc": "print · 2023",             "path": "art/signal-noise",     "cover": "cover.jpg", "count": 2 },
+    { "id": "latency",          "label": "latency",           "desc": "digital · 2024",           "path": "art/latency",          "cover": "cover.jpg", "count": 3 },
+    { "id": "null-space",       "label": "null space",        "desc": "digital · 2024",           "path": "art/null-space",       "cover": "cover.jpg", "count": 2 },
+    { "id": "fragmentation",    "label": "fragmentation",     "desc": "digital · 2023",           "path": "art/fragmentation",    "cover": "cover.jpg", "count": 2 },
+    { "id": "process-states",   "label": "process states",    "desc": "mixed · 2021–2024",        "path": "art/process-states",   "cover": "cover.jpg", "count": 9 },
+    { "id": "network-studies",  "label": "network studies",   "desc": "mixed · 2021–2024",        "path": "art/network-studies",  "cover": "cover.jpg", "count": 9 },
+    { "id": "entropy",          "label": "entropy",           "desc": "mixed · 2023–2024",        "path": "art/entropy",          "cover": "cover.jpg", "count": 8 },
+    { "id": "time-signal",      "label": "time / signal",     "desc": "mixed · 2021–2024",        "path": "art/time-signal",      "cover": "cover.jpg", "count": 8 },
+    { "id": "infrastructure",   "label": "infrastructure",    "desc": "installation · 2021–2024", "path": "art/infrastructure",   "cover": "cover.jpg", "count": 7 }
+  ]
+}
