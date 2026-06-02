@@ -184,7 +184,23 @@ let targetX = 0, targetY = 0;
 let lerpX   = 0, lerpY   = 0;
 let cursorStarted  = false;
 let keyboardActive = false;
-const LERP = 0.22;
+const LERP        = 0.22;
+const CURSOR_CHUNK = 8;     // px grid the cursor snaps to
+
+// ── PHOSPHOR TRAILS ───────────────────────────────────────────────────────────
+const TRAIL_POOL  = 14;      // afterimage element pool
+const TRAIL_SPAWN = 6;      // frames between stamping a new afterimage (lower freq)
+const TRAIL_FADE  = 0.015;  // opacity lost per frame (smaller = slower fadeaway)
+const TRAIL_START = 0.4;    // opacity a fresh afterimage starts at
+const trailEls    = [];
+for (let k = 0; k < TRAIL_POOL; k++) {
+  const t = document.createElement('div');
+  t.className = 'ghost-trail';
+  t._op = 0;
+  ghostCursorEl.parentNode.insertBefore(t, ghostCursorEl);
+  trailEls.push(t);
+}
+let trailFrame = 0, trailNext = 0, lastStampX = 0, lastStampY = 0;
 
 // ── CURSOR HIDE ON INTERACTIVE ELEMENTS ──────────────────────────────────────
 const INTERACTIVE_SEL = '.menu-item, .menu-back, .splash-item, .panel-card, ' +
@@ -225,10 +241,44 @@ document.addEventListener('mousemove', e => {
   if (cursorStarted) {
     lerpX += (targetX - lerpX) * LERP;
     lerpY += (targetY - lerpY) * LERP;
-    if (!keyboardActive) {
+
+    if (keyboardActive) {
+      // keyboard in control — hide cursor and clear all afterimages
+      ghostCursorEl.style.display = 'none';
+      trailEls.forEach(t => { t._op = 0; t.style.display = 'none'; });
+    } else {
+      // fade every live afterimage a little each frame
+      const hot = ghostCursorEl.classList.contains('cursor-hot');
+      trailEls.forEach(t => {
+        if (t._op > 0) {
+          t._op -= TRAIL_FADE;
+          if (t._op <= 0) { t._op = 0; t.style.display = 'none'; }
+          else t.style.opacity = t._op.toFixed(3);
+        }
+      });
+
+      const cx = Math.round(lerpX / CURSOR_CHUNK) * CURSOR_CHUNK;
+      const cy = Math.round(lerpY / CURSOR_CHUNK) * CURSOR_CHUNK;
       ghostCursorEl.style.display = 'block';
-      ghostCursorEl.style.left = (Math.round(lerpX / 5) * 5) + 'px';
-      ghostCursorEl.style.top  = (Math.round(lerpY / 5) * 5) + 'px';
+      ghostCursorEl.style.left = cx + 'px';
+      ghostCursorEl.style.top  = cy + 'px';
+
+      // stamp a fresh afterimage occasionally, only when actually moving
+      trailFrame++;
+      const moved = Math.abs(cx - lastStampX) + Math.abs(cy - lastStampY) > CURSOR_CHUNK;
+      if (trailFrame % TRAIL_SPAWN === 0 && moved) {
+        const t = trailEls[trailNext];
+        trailNext = (trailNext + 1) % TRAIL_POOL;
+        t.style.left = cx + 'px';
+        t.style.top  = cy + 'px';
+        t.style.background = hot
+          ? 'repeating-linear-gradient(to bottom,#ffcc00 0px,#ffcc00 3px,rgba(0,0,0,0.10) 3px,rgba(0,0,0,0.10) 4px)'
+          : '';
+        t._op = TRAIL_START;
+        t.style.opacity = TRAIL_START.toFixed(3);
+        t.style.display = 'block';
+        lastStampX = cx; lastStampY = cy;
+      }
     }
   }
   requestAnimationFrame(animateCursor);

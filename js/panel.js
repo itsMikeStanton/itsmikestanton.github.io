@@ -57,6 +57,140 @@ async function fetchImageProgress(src, onProgress) {
   return URL.createObjectURL(new Blob(chunks));
 }
 
+// ── PROGRESSIVE "ENHANCE" REVEAL ──────────────────────────────────────────────
+// Renders an image as chunky pixel blocks that resolve into finer detail over
+// several steps — the classic movie image-scan look. Done on a <canvas>.
+const REVEAL_LEVELS = [4, 8, 16, 32, 64, 128];  // blocks across, coarse → fine
+const REVEAL_TINT   = '#0d3a0d';                // dark phosphor green the reveal starts in
+
+function drawFit(ctx, img, fit, dw, dh) {
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+  const scale = fit === 'cover' ? Math.max(dw/iw, dh/ih) : Math.min(dw/iw, dh/ih);
+  const w = iw * scale, h = ih * scale;
+  ctx.clearRect(0, 0, dw, dh);
+  ctx.drawImage(img, (dw - w) / 2, (dh - h) / 2, w, h);
+}
+
+function revealImage(canvas, img, fit, stepMs, opts = {}) {
+  const cw = canvas.width, ch = canvas.height;
+  const ctx = canvas.getContext('2d');
+  const n = REVEAL_LEVELS.length;
+
+  // full-res fitted render we downsample from each step
+  const src = document.createElement('canvas');
+  src.width = cw; src.height = ch;
+  drawFit(src.getContext('2d'), img, fit, cw, ch);
+
+  const tmp  = document.createElement('canvas');
+  const tctx = tmp.getContext('2d');
+
+  // phosphor layer buffer (green-mapped copy of the current blocky frame)
+  const ph   = document.createElement('canvas');
+  ph.width = cw; ph.height = ch;
+  const phctx = ph.getContext('2d');
+
+  // Build a green-phosphor version of the low-res frame and composite it over
+  // the colour frame at `alpha`. Maps luminance → green ramp, so whites become
+  // bright green (a plain hue tint leaves whites white).
+  function phosphorOver(bw, bh, alpha) {
+    if (alpha <= 0) return;
+    phctx.globalCompositeOperation = 'source-over';
+    phctx.globalAlpha = 1;
+    phctx.imageSmoothingEnabled = false;
+    phctx.clearRect(0, 0, cw, ch);
+    phctx.filter = 'grayscale(1)';
+    phctx.drawImage(tmp, 0, 0, bw, bh, 0, 0, cw, ch);   // grayscale blocky
+    phctx.filter = 'none';
+    phctx.globalCompositeOperation = 'multiply';
+    phctx.fillStyle = REVEAL_TINT;
+    phctx.fillRect(0, 0, cw, ch);                        // white→dark green, black→black
+    phctx.globalCompositeOperation = 'destination-in';
+    phctx.drawImage(tmp, 0, 0, bw, bh, 0, 0, cw, ch);   // re-mask to image alpha
+    phctx.globalCompositeOperation = 'source-over';
+
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(ph, 0, 0);
+    ctx.globalAlpha = 1;
+  }
+
+  let i = 0;
+  (function step() {
+    if (i >= n) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.clearRect(0, 0, cw, ch);
+      ctx.drawImage(src, 0, 0);                          // crisp, full color
+      if (opts.done) opts.done();
+      return;
+    }
+    const bw = Math.max(1, REVEAL_LEVELS[i]);
+    const bh = Math.max(1, Math.round(bw * ch / cw));
+    tmp.width = bw; tmp.height = bh;
+    tctx.imageSmoothingEnabled = true;
+    tctx.drawImage(src, 0, 0, cw, ch, 0, 0, bw, bh);    // downsample
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.drawImage(tmp, 0, 0, bw, bh, 0, 0, cw, ch);     // blocky colour upscale
+    phosphorOver(bw, bh, Math.pow(1 - i / n, 0.4));      // green → colour (green lingers)
+    if (opts.onStep) opts.onStep(i / n);
+    i++;
+    setTimeout(step, stepMs);
+  })();
+}
+
+// ── REVEAL CASCADE QUEUE ──────────────────────────────────────────────────────
+// Staggers reveal kickoffs ~30ms apart so a grid of thumbs cascades in.
+const REVEAL_CASCADE_MS = 110;
+const _revealQueue = [];
+let _revealDraining = false;
+
+function enqueueReveal(fn) {
+  _revealQueue.push(fn);
+  if (_revealDraining) return;
+  _revealDraining = true;
+  (function drain() {
+    const next = _revealQueue.shift();
+    if (!next) { _revealDraining = false; return; }
+    next();
+    setTimeout(drain, REVEAL_CASCADE_MS);
+  })();
+}
+
+function makeCanvas(container, cls) {
+  const w = container.clientWidth  || 160;
+  const h = container.clientHeight || 120;
+  const dpr = window.devicePixelRatio || 1;
+  const c = document.createElement('canvas');
+  c.width  = Math.round(w * dpr);
+  c.height = Math.round(h * dpr);
+  c.className = cls;
+  return c;
+}
+
+// thumbnails reveal once scrolled into view (cheap, no progress bar)
+const _thumbObserver = new IntersectionObserver((entries, obs) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) { obs.unobserve(e.target); if (e.target._reveal) enqueueReveal(e.target._reveal); }
+  });
+}, { rootMargin: '140px' });
+
+function revealThumb(container, src, label) {
+  container.classList.add('img-pending');
+  container._reveal = () => {
+    const img = new Image();
+    img.onload = () => {
+      container.classList.remove('img-pending');
+      container.textContent = '';
+      const canvas = makeCanvas(container, 'thumb-canvas');
+      container.appendChild(canvas);
+      revealImage(canvas, img, 'cover', 170);
+    };
+    img.onerror = () => { container.classList.remove('img-pending'); container.textContent = '[ ? ]'; };
+    img.src = src;
+  };
+  _thumbObserver.observe(container);
+}
+
 // Loads `src` into `container` with a terminal-style progress readout.
 function loadImageInto(container, src, label) {
   container.innerHTML = '';
@@ -80,9 +214,13 @@ function loadImageInto(container, src, label) {
       img.onload = () => {
         container.classList.remove('img-loading');
         container.innerHTML = '';
-        img.className = 'img-loaded';
-        container.appendChild(img);
-        if (snd) snd.done();
+        const canvas = makeCanvas(container, 'img-canvas');
+        container.appendChild(canvas);
+        // bytes are in — now resolve from blocks to crisp
+        revealImage(canvas, img, 'contain', 210, {
+          onStep: (p) => { if (snd) snd.barTick(p); },
+          done:   () => { if (snd) snd.done(); },
+        });
       };
       img.src = url;
       img.alt = label;
@@ -121,15 +259,8 @@ function buildGrid(items, onClick) {
     const thumb = document.createElement('div');
     thumb.className = 'panel-thumb';
     if (item.src) {
-      // grid thumbs use native lazy loading — only fetch when scrolled near
-      thumb.classList.add('img-pending');
-      const img = document.createElement('img');
-      img.loading = 'lazy';
-      img.src = item.src;
-      img.alt = item.label;
-      img.addEventListener('load',  () => thumb.classList.remove('img-pending'));
-      img.addEventListener('error', () => { thumb.classList.remove('img-pending'); thumb.textContent = '[ ? ]'; });
-      thumb.appendChild(img);
+      // reveal with the blocky enhance effect when scrolled into view
+      revealThumb(thumb, item.src, item.label);
     } else {
       thumb.textContent = '[ img ]';
     }

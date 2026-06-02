@@ -375,6 +375,12 @@ body.splash #prompt-line   { display: none; }
   opacity: 0.85;
   filter: saturate(0.3) sepia(0.4);
 }
+.thumb-canvas {
+  display: block;
+  width: 100%; height: 100%;
+  opacity: 0.85;
+  filter: saturate(0.3) sepia(0.4);
+}
 /* thumb still fetching (native lazy) — shimmer placeholder */
 .panel-thumb.img-pending {
   background:
@@ -496,8 +502,7 @@ body.splash #prompt-line   { display: none; }
   overflow-y: auto;
 }
 .panel-detail-img {
-  width: 100%; max-height: 55vh; flex-shrink: 0;
-  min-height: 8em;
+  width: 100%; height: 55vh; flex-shrink: 0;
   background: #060e06;
   border: 1px solid #1c421c;
   display: flex;
@@ -511,6 +516,12 @@ body.splash #prompt-line   { display: none; }
 .panel-detail-img img {
   width: 100%; height: 100%;
   object-fit: contain;
+  opacity: 0.85;
+  filter: saturate(0.3) sepia(0.4);
+}
+.img-canvas {
+  display: block;
+  width: 100%; height: 100%;
   opacity: 0.85;
   filter: saturate(0.3) sepia(0.4);
 }
@@ -541,25 +552,32 @@ body.splash #prompt-line   { display: none; }
 .panel-detail-title { font-size: 1.4em; color: #a0ffa0; letter-spacing: 0.08em; }
 .panel-detail-meta  { color: #2b8c2b; font-size: 0.85em; letter-spacing: 0.06em; }
 
-#ghost-cursor {
+#ghost-cursor, .ghost-trail {
   position: absolute;
   pointer-events: none;
-  z-index: 25;
   display: none;
   width: 20px;
   height: 28px;
-  opacity: 0.92;
   background: repeating-linear-gradient(
     to bottom,
     #33ff33 0px, #33ff33 3px,
     rgba(0,0,0,0.10) 3px, rgba(0,0,0,0.10) 4px
   );
   clip-path: polygon(0% 0%, 0% 100%, 33.86% 69.24%, 78.93% 61.4%);
+  user-select: none;
+}
+#ghost-cursor {
+  z-index: 25;
+  opacity: 0.92;
   filter:
     drop-shadow(0 0 5px rgba(51,255,51,1))
     drop-shadow(0 0 12px rgba(51,255,51,0.75))
     drop-shadow(0 0 22px rgba(51,255,51,0.35));
-  user-select: none;
+}
+/* phosphor afterimages — dimmer, behind the live cursor, no heavy glow */
+.ghost-trail {
+  z-index: 24;
+  filter: drop-shadow(0 0 4px rgba(51,255,51,0.6));
 }
 #ghost-cursor.cursor-hot {
   background: repeating-linear-gradient(

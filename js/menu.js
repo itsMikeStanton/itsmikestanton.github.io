@@ -221,13 +221,16 @@ function showSplash() {
     function scheduleNext() {
       if (!running) return;
       if (Math.random() < 0.45) {
+        // calm period — clean title, no FUCKING
+        title.textContent = '[ NOT QUIETLY . COM ]';
         setTimeout(scheduleNext, rnd(180, 550));
       } else {
         const end = Date.now() + rnd(100, 400);
         function burst() {
           if (!running) return;
           if (Date.now() >= end) {
-            title.textContent = '[ NOT FUCKING QUIETLY . COM ]';
+            // burst over — drop FUCKING, back to clean title
+            title.textContent = '[ NOT QUIETLY . COM ]';
             title.style.transform = '';
             title.style.filter = '';
             title.style.textShadow = '';

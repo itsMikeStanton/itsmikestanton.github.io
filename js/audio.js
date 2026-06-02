@@ -47,52 +47,17 @@ const MASTER_VOL = 0.5;
       barTick: (p) => mkTone(160 + p*520, 0.04, 0.065, 'square'),
       done:    () => { mkTone(620, 0.12, 0.13); mkTone(860, 0.1, 0.09, 'sine', ctx.currentTime+0.08); },
       glitch:  () => {
-        const t    = ctx.currentTime;
-        const freq = 480 + Math.random() * 280;
-
-        // two detuned sawtooths — beating creates grit
-        const osc1 = ctx.createOscillator();
-        osc1.type  = 'sawtooth';
-        osc1.frequency.setValueAtTime(freq, t);
-        osc1.frequency.setValueAtTime(freq * (0.4 + Math.random() * 1.0), t + 0.35 + Math.random() * 0.2);
-
-        const osc2 = ctx.createOscillator();
-        osc2.type  = 'sawtooth';
-        osc2.frequency.setValueAtTime(freq * (1 + 0.03 + Math.random() * 0.05), t);
-
-        // heavy bandpass noise for gritty fuzz bed
-        const nSrc = ctx.createBufferSource();
-        nSrc.buffer = noiseBuf; nSrc.loop = true;
-        const nFilt = ctx.createBiquadFilter();
-        nFilt.type = 'bandpass'; nFilt.frequency.value = freq * 0.8; nFilt.Q.value = 1.6;
-        const nGain = ctx.createGain(); nGain.gain.value = 1.3;
-        nSrc.connect(nFilt); nFilt.connect(nGain);
-
-        // brutal waveshaper — near-square-wave clipping
-        const shaper = ctx.createWaveShaper();
-        const amt    = 200 + Math.random() * 180;
-        const curve  = new Float32Array(256);
-        for (let i = 0; i < 256; i++) {
-          const x = (i * 2) / 256 - 1;
-          curve[i] = ((Math.PI + amt) * x) / (Math.PI + amt * Math.abs(x));
-        }
-        shaper.curve = curve;
-        shaper.oversample = '4x';
-
-        const mix = ctx.createGain(); mix.gain.value = 1;
-        osc1.connect(mix); osc2.connect(mix); nGain.connect(mix);
-        mix.connect(shaper);
-
+        // simple low buzz
+        const t = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        osc.type = 'square';
+        osc.frequency.value = 70;
         const g = ctx.createGain();
         g.gain.setValueAtTime(0, t);
-        g.gain.linearRampToValueAtTime(0.022, t + 0.32);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + 1.9);
-        shaper.connect(g); g.connect(master);
-
-        const dur = 2.0;
-        osc1.start(t); osc1.stop(t + dur);
-        osc2.start(t); osc2.stop(t + dur);
-        nSrc.start(t); nSrc.stop(t + dur);
+        g.gain.linearRampToValueAtTime(0.05, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+        osc.connect(g); g.connect(master);
+        osc.start(t); osc.stop(t + 0.24);
       },
       wipe: (ms) => {
         const s = ctx.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
