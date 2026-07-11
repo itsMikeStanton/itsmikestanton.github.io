@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en" manifest="tactics.appcache">
+<head>
+<meta charset="utf-8">
+<title>Tactics</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Tactics">
+<meta name="format-detection" content="telephone=no">
+<style>
+  * { -webkit-box-sizing: border-box; box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    position: fixed; overflow: hidden;
+    background: #16351a;
+    font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: rgba(0,0,0,0);
+  }
+  #app { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  #fieldCanvas { position: absolute; top: 0; left: 0; z-index: 1; }
+  #drawCanvas  { position: absolute; top: 0; left: 0; z-index: 2; }
+  #playerLayer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3; }
+
+  /* Player tokens */
+  .token {
+    position: absolute;
+    -webkit-transform: translate(-50%, -50%);
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    text-align: center;
+    color: #fff;
+    font-weight: 700;
+    border: 2px solid rgba(0,0,0,0.35);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+  }
+  .token.home { background: #1f6dff; }
+  .token.away { background: #e53935; }
+  .token.gk   { background: #ffd23f; color: #16351a; }
+  .token.ball {
+    background: #ffffff;
+    background: -webkit-radial-gradient(35% 30%, #ffffff 0%, #ffffff 55%, #d0d0d0 100%);
+    background: radial-gradient(circle at 35% 30%, #ffffff 0%, #ffffff 55%, #d0d0d0 100%);
+    border: 1px solid #555;
+  }
+
+  /* Toolbar */
+  #toolbar {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 5;
+    display: -webkit-box; display: -webkit-flex; display: flex;
+    -webkit-flex-wrap: wrap; flex-wrap: wrap;
+    -webkit-align-items: center; align-items: center;
+    padding: 4px 6px;
+    background: rgba(15,25,18,0.82);
+    border-bottom: 1px solid rgba(255,255,255,0.12);
+  }
+  #toolbar .group {
+    display: -webkit-box; display: -webkit-flex; display: flex;
+    -webkit-align-items: center; align-items: center;
+    -webkit-flex-wrap: wrap; flex-wrap: wrap;
+  }
+  #toolbar .spacer { -webkit-box-flex: 1; -webkit-flex: 1; flex: 1 1 auto; }
+  .sep { width: 1px; height: 26px; background: rgba(255,255,255,0.18); margin: 0 5px; }
+
+  button.tb {
+    -webkit-appearance: none; appearance: none;
+    min-width: 46px; height: 40px;
+    margin: 3px; padding: 0 10px;
+    font-size: 14px; font-weight: 600;
+    color: #eef2ef; background: #2c4130;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+  }
+  button.tb.active { background: #4caf50; color: #0d1f10; border-color: #7bd17f; }
+  button.tb.wide { min-width: 58px; }
+  button.tb:active { opacity: 0.7; }
+
+  .swatch {
+    width: 30px; height: 30px; margin: 3px; padding: 0;
+    border-radius: 50%; border: 2px solid rgba(255,255,255,0.35);
+    -webkit-appearance: none; appearance: none;
+  }
+  .swatch.active { border-color: #ffffff; box-shadow: 0 0 0 2px #4caf50; }
+
+  #menuBtn {
+    position: absolute; top: 6px; right: 6px; z-index: 6;
+    display: none;
+    height: 40px; padding: 0 14px;
+    font-size: 15px; font-weight: 700; color: #0d1f10;
+    background: #4caf50; border: none; border-radius: 8px;
+  }
+  body.collapsed #toolbar { display: none; }
+  body.collapsed #menuBtn { display: block; }
+
+  /* Modal */
+  #overlay {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 10;
+    display: none;
+    background: rgba(0,0,0,0.55);
+    -webkit-align-items: center; align-items: center;
+    -webkit-justify-content: center; justify-content: center;
+  }
+  #overlay.open { display: -webkit-box; display: -webkit-flex; display: flex; }
+  #sheet {
+    width: 88%; max-width: 460px; max-height: 82%;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+    background: #1c2b20; color: #eef2ef;
+    border: 1px solid rgba(255,255,255,0.15); border-radius: 14px;
+    padding: 16px;
+  }
+  #sheetTitle { font-size: 19px; font-weight: 700; margin-bottom: 12px; }
+  #sheetBody input[type=text] {
+    width: 100%; height: 44px; font-size: 16px;
+    padding: 0 10px; margin-bottom: 12px;
+    border-radius: 8px; border: 1px solid rgba(255,255,255,0.25);
+    background: #12201580; color: #fff;
+    -webkit-appearance: none; appearance: none;
+  }
+  .rowItem {
+    display: -webkit-box; display: -webkit-flex; display: flex;
+    -webkit-align-items: center; align-items: center;
+    padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+  .rowItem .name { -webkit-box-flex: 1; -webkit-flex: 1; flex: 1 1 auto;
+    font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .btn {
+    -webkit-appearance: none; appearance: none;
+    height: 40px; padding: 0 14px; margin-left: 8px;
+    font-size: 15px; font-weight: 600; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.2); color: #fff; background: #35513b;
+  }
+  .btn.primary { background: #4caf50; color: #0d1f10; border-color: #7bd17f; }
+  .btn.danger  { background: #7a2a28; border-color: #b25350; }
+  .btn.full { width: 100%; margin-left: 0; height: 46px; margin-top: 4px; }
+  .hint { font-size: 13px; color: #a9b6ac; margin: 6px 0 14px; }
+  .empty { color: #a9b6ac; font-size: 15px; padding: 10px 0; }
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="fieldCanvas"></canvas>
+  <canvas id="drawCanvas"></canvas>
+  <div id="playerLayer"></div>
+
+  <div id="toolbar">
+    <div class="group">
+      <button class="tb" id="btnMove">Move</button>
+      <span class="sep"></span>
+      <button class="tb" id="btnFree">Pen</button>
+      <button class="tb" id="btnLine">Line</button>
+      <button class="tb" id="btnArrow">Arrow</button>
+      <button class="tb" id="btnDash">Dash</button>
+      <button class="tb" id="btnErase">Erase</button>
+      <span class="sep"></span>
+      <button class="swatch" id="swA" style="background:#ffdd00"></button>
+      <button class="swatch" id="swB" style="background:#ffffff"></button>
+      <button class="swatch" id="swC" style="background:#111111"></button>
+      <button class="swatch" id="swD" style="background:#1f6dff"></button>
+      <button class="swatch" id="swE" style="background:#e53935"></button>
+      <span class="sep"></span>
+      <button class="tb" id="btnUndo">Undo</button>
+      <button class="tb" id="btnClearDraw">Clear&nbsp;Lines</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="group">
+      <button class="tb wide" id="btnFormation">4-4-2</button>
+      <button class="tb" id="btnAddHome">+Blue</button>
+      <button class="tb" id="btnDelHome">&minus;Blue</button>
+      <button class="tb" id="btnAddAway">+Red</button>
+      <button class="tb" id="btnDelAway">&minus;Red</button>
+      <button class="tb" id="btnBall">Ball</button>
+      <button class="tb" id="btnReset">Reset</button>
+      <span class="sep"></span>
+      <button class="tb" id="btnSave">Save</button>
+      <button class="tb" id="btnLoad">Load</button>
+      <button class="tb" id="btnHide">Hide</button>
+    </div>
+  </div>
+  <button id="menuBtn">Menu</button>
+
+  <div id="overlay">
+    <div id="sheet">
+      <div id="sheetTitle"></div>
+      <div id="sheetBody"></div>
+      <button class="btn full" id="sheetClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Elements ----------
+  var body = document.body;
+  var fieldCanvas = document.getElementById("fieldCanvas");
+  var drawCanvas = document.getElementById("drawCanvas");
+  var playerLayer = document.getElementById("playerLayer");
+  var overlay = document.getElementById("overlay");
+  var sheet = document.getElementById("sheet");
+  var sheetTitle = document.getElementById("sheetTitle");
+  var sheetBody = document.getElementById("sheetBody");
+
+  var fieldCtx = fieldCanvas.getContext("2d");
+  var drawCtx = drawCanvas.getContext("2d");
+  var committed = document.createElement("canvas");
+  var committedCtx = committed.getContext("2d");
+
+  var HAS_DASH = typeof drawCtx.setLineDash === "function";
+
+  // ---------- State ----------
+  var viewW = 0, viewH = 0, dpr = 1;
+  var pitch = { x: 0, y: 0, w: 0, h: 0 };
+  var players = [];      // {team,number,x,y,isBall,el}
+  var strokes = [];      // {tool,color,w,pts:[[fx,fy],...]}
+  var mode = "move";     // "move" | "draw"
+  var tool = "free";     // "free" | "line" | "arrow" | "dash" | "erase"
+  var color = "#ffdd00";
+  var strokeWFrac = 0.006;
+  var currentFormation = "442";
+  var nextId = 1;
+
+  var drag = null;       // active token drag
+  var cur = null;        // active stroke
+  var lastPx = null;     // last freehand point (px)
+
+  // ---------- Formations (home attacking right; [x,y] fractions of pitch) ----------
+  var FORMATIONS = {
+    "442": { label: "4-4-2", pos: [
+      [0.05,0.50],
+      [0.18,0.20],[0.18,0.40],[0.18,0.60],[0.18,0.80],
+      [0.33,0.18],[0.33,0.40],[0.33,0.60],[0.33,0.82],
+      [0.45,0.38],[0.45,0.62]
+    ]},
+    "433": { label: "4-3-3", pos: [
+      [0.05,0.50],
+      [0.18,0.20],[0.18,0.40],[0.18,0.60],[0.18,0.80],
+      [0.31,0.30],[0.31,0.50],[0.31,0.70],
+      [0.45,0.24],[0.45,0.50],[0.45,0.76]
+    ]},
+    "4231": { label: "4-2-3-1", pos: [
+      [0.05,0.50],
+      [0.17,0.20],[0.17,0.40],[0.17,0.60],[0.17,0.80],
+      [0.27,0.38],[0.27,0.62],
+      [0.38,0.24],[0.38,0.50],[0.38,0.76],
+      [0.47,0.50]
+    ]},
+    "352": { label: "3-5-2", pos: [
+      [0.05,0.50],
+      [0.17,0.30],[0.17,0.50],[0.17,0.70],
+      [0.31,0.12],[0.31,0.32],[0.31,0.50],[0.31,0.68],[0.31,0.88],
+      [0.45,0.38],[0.45,0.62]
+    ]}
+  };
+  var FORMATION_ORDER = ["442", "433", "4231", "352"];
+
+  // ---------- Storage (localStorage with in-memory fallback) ----------
+  var INDEX_KEY = "tb_index";
+  var LAYOUT_PREFIX = "tb_layout_";
+  var memStore = {};
+
+  function storeGet(key) {
+    try { return window.localStorage.getItem(key); }
+    catch (e) { return (key in memStore) ? memStore[key] : null; }
+  }
+  function storeSet(key, val) {
+    try { window.localStorage.setItem(key, val); }
+    catch (e) { memStore[key] = val; }
+  }
+  function storeRemove(key) {
+    try { window.localStorage.removeItem(key); }
+    catch (e) { delete memStore[key]; }
+  }
+  function getIndex() {
+    var raw = storeGet(INDEX_KEY);
+    if (!raw) return [];
+    try { var a = JSON.parse(raw); return (a && a.length) ? a : []; }
+    catch (e) { return []; }
+  }
+  function setIndex(arr) { storeSet(INDEX_KEY, JSON.stringify(arr)); }
+
+  // ---------- Geometry helpers ----------
+  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+  function computePitch() {
+    var pad = 0.028;
+    var availW = viewW * (1 - 2 * pad);
+    var availH = (viewH - topInset()) * (1 - 2 * pad);
+    var ratio = 105 / 68;
+    var w = availW, h = w / ratio;
+    if (h > availH) { h = availH; w = h * ratio; }
+    pitch.x = (viewW - w) / 2;
+    pitch.y = topInset() + ((viewH - topInset()) - h) / 2;
+    pitch.w = w;
+    pitch.h = h;
+  }
+
+  function topInset() {
+    // Reserve room so the pitch clears the toolbar (or nothing when collapsed).
+    var tb = document.getElementById("toolbar");
+    if (body.className.indexOf("collapsed") !== -1) return 0;
+    return tb ? tb.offsetHeight : 0;
+  }
+
+  function fx2px(fx) { return pitch.x + fx * pitch.w; }
+  function fy2px(fy) { return pitch.y + fy * pitch.h; }
+  function px2fx(px) { return (px - pitch.x) / pitch.w; }
+  function px2fy(py) { return (py - pitch.y) / pitch.h; }
+
+  function eventPoint(e) {
+    var t = (e.touches && e.touches.length) ? e.touches[0]
+          : (e.changedTouches && e.changedTouches.length) ? e.changedTouches[0]
+          : e;
+    var r = drawCanvas.getBoundingClientRect();
+    return { x: t.clientX - r.left, y: t.clientY - r.top };
+  }
+
+  // ---------- Canvas sizing ----------
+  function sizeCanvas(canvas, ctx) {
+    canvas.width = Math.round(viewW * dpr);
+    canvas.height = Math.round(viewH * dpr);
+    canvas.style.width = viewW + "px";
+    canvas.style.height = viewH + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  // ---------- Field drawing ----------
+  function drawField() {
+    var ctx = fieldCtx;
+    ctx.clearRect(0, 0, viewW, viewH);
+    // Surrounding
+    ctx.fillStyle = "#16351a";
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    var px = pitch.x, py = pitch.y, pw = pitch.w, ph = pitch.h;
+
+    // Mown stripes
+    var nStripes = 14;
+    var sw = pw / nStripes;
+    for (var i = 0; i < nStripes; i++) {
+      ctx.fillStyle = (i % 2 === 0) ? "#3f8f43" : "#3a8540";
+      ctx.fillRect(px + i * sw, py, sw + 1, ph);
+    }
+
+    var lw = Math.max(2, ph * 0.006);
+    ctx.strokeStyle = "rgba(255,255,255,0.9)";
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.lineWidth = lw;
+    ctx.lineCap = "round";
+
+    var cx = px + pw / 2, cy = py + ph / 2;
+
+    // Outer boundary
+    ctx.strokeRect(px, py, pw, ph);
+
+    // Halfway line
+    line(ctx, cx, py, cx, py + ph);
+
+    // Center circle + spot
+    var cr = ph * 0.135;
+    circle(ctx, cx, cy, cr, false);
+    circle(ctx, cx, cy, lw * 1.3, true);
+
+    // Boxes both ends
+    var penW = pw * 0.157, penH = ph * 0.593;
+    var goalW = pw * 0.0524, goalH = ph * 0.269;
+    var spotOff = pw * 0.105;
+    var arcR = ph * 0.135;
+
+    // Left
+    rect(ctx, px, cy - penH / 2, penW, penH);
+    rect(ctx, px, cy - goalH / 2, goalW, goalH);
+    var lspot = px + spotOff;
+    circle(ctx, lspot, cy, lw * 1.2, true);
+    penaltyArc(ctx, lspot, cy, arcR, px + penW, true);
+
+    // Right
+    rect(ctx, px + pw - penW, cy - penH / 2, penW, penH);
+    rect(ctx, px + pw - goalW, cy - goalH / 2, goalW, goalH);
+    var rspot = px + pw - spotOff;
+    circle(ctx, rspot, cy, lw * 1.2, true);
+    penaltyArc(ctx, rspot, cy, arcR, px + pw - penW, false);
+
+    // Goals (behind the line)
+    var gDepth = pw * 0.018, gH = ph * 0.108;
+    ctx.strokeStyle = "rgba(255,255,255,0.75)";
+    rect(ctx, px - gDepth, cy - gH / 2, gDepth, gH);
+    rect(ctx, px + pw, cy - gH / 2, gDepth, gH);
+    ctx.strokeStyle = "rgba(255,255,255,0.9)";
+
+    // Corner arcs
+    var carc = ph * 0.02;
+    arc(ctx, px, py, carc, 0, Math.PI / 2);
+    arc(ctx, px, py + ph, carc, -Math.PI / 2, 0);
+    arc(ctx, px + pw, py, carc, Math.PI / 2, Math.PI);
+    arc(ctx, px + pw, py + ph, carc, Math.PI, Math.PI * 1.5);
+  }
+
+  function line(ctx, x1, y1, x2, y2) {
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  }
+  function rect(ctx, x, y, w, h) { ctx.strokeRect(x, y, w, h); }
+  function circle(ctx, x, y, r, fill) {
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+    if (fill) ctx.fill(); else ctx.stroke();
+  }
+  function arc(ctx, x, y, r, a0, a1) {
+    ctx.beginPath(); ctx.arc(x, y, r, a0, a1); ctx.stroke();
+  }
+  function penaltyArc(ctx, sx, sy, r, boxEdgeX, isLeft) {
+    var d = isLeft ? (boxEdgeX - sx) : (sx - boxEdgeX);
+    var c = clamp(d / r, -1, 1);
+    var t = Math.acos(c);
+    if (isLeft) arc(ctx, sx, sy, r, -t, t);
+    else arc(ctx, sx, sy, r, Math.PI - t, Math.PI + t);
+  }
+
+  // ---------- Players ----------
+  function tokenDiameter() { return clamp(pitch.h * 0.062, 22, 46); }
+
+  function makePlayer(team, number, x, y, isBall) {
+    var p = { id: nextId++, team: team, number: number, x: x, y: y, isBall: !!isBall, el: null };
+    var el = document.createElement("div");
+    el.className = "token " + (isBall ? "ball" : team) + (number === 1 && !isBall ? " gk" : "");
+    el.setAttribute("data-id", String(p.id));
+    if (!isBall) el.appendChild(document.createTextNode(String(number)));
+    playerLayer.appendChild(el);
+    p.el = el;
+    players.push(p);
+    return p;
+  }
+
+  function findPlayer(id) {
+    for (var i = 0; i < players.length; i++) if (players[i].id === id) return players[i];
+    return null;
+  }
+
+  function clearPlayers() {
+    for (var i = 0; i < players.length; i++) {
+      if (players[i].el && players[i].el.parentNode) players[i].el.parentNode.removeChild(players[i].el);
+    }
+    players = [];
+  }
+
+  function hasBall() {
+    for (var i = 0; i < players.length; i++) if (players[i].isBall) return true;
+    return false;
+  }
+
+  function positionAll() {
+    var d = tokenDiameter();
+    for (var i = 0; i < players.length; i++) {
+      var p = players[i];
+      var dd = p.isBall ? d * 0.6 : d;
+      var el = p.el;
+      el.style.width = dd + "px";
+      el.style.height = dd + "px";
+      el.style.left = fx2px(p.x) + "px";
+      el.style.top = fy2px(p.y) + "px";
+      if (!p.isBall) {
+        el.style.fontSize = (dd * 0.42) + "px";
+        el.style.lineHeight = (dd - 4) + "px";
+      }
+    }
+  }
+
+  function applyFormation(name) {
+    var ball = hasBall();
+    clearPlayers();
+    var pos = FORMATIONS[name].pos;
+    for (var i = 0; i < pos.length; i++) {
+      makePlayer("home", i + 1, pos[i][0], pos[i][1], false);
+    }
+    for (var j = 0; j < pos.length; j++) {
+      makePlayer("away", j + 1, 1 - pos[j][0], pos[j][1], false);
+    }
+    if (ball) makePlayer("ball", 0, 0.5, 0.5, true);
+    currentFormation = name;
+    positionAll();
+  }
+
+  function teamPlayers(team) {
+    var out = [];
+    for (var i = 0; i < players.length; i++) if (players[i].team === team) out.push(players[i]);
+    return out;
+  }
+
+  function addTeamPlayer(team) {
+    var list = teamPlayers(team);
+    var maxN = 0;
+    for (var i = 0; i < list.length; i++) if (list[i].number > maxN) maxN = list[i].number;
+    var cx = (team === "home") ? 0.28 : 0.72;
+    makePlayer(team, maxN + 1, cx, 0.5, false);
+    positionAll();
+  }
+
+  function removeTeamPlayer(team) {
+    var list = teamPlayers(team);
+    if (list.length <= 1) return;
+    var target = list[0];
+    for (var i = 1; i < list.length; i++) if (list[i].number > target.number) target = list[i];
+    if (target.el && target.el.parentNode) target.el.parentNode.removeChild(target.el);
+    for (var j = 0; j < players.length; j++) {
+      if (players[j].id === target.id) { players.splice(j, 1); break; }
+    }
+  }
+
+  function toggleBall() {
+    if (hasBall()) {
+      for (var i = players.length - 1; i >= 0; i--) {
+        if (players[i].isBall) {
+          if (players[i].el && players[i].el.parentNode) players[i].el.parentNode.removeChild(players[i].el);
+          players.splice(i, 1);
+        }
+      }
+    } else {
+      makePlayer("ball", 0, 0.5, 0.5, true);
+      positionAll();
+    }
+  }
+
+  function resetPlayers() { applyFormation(currentFormation); }
+
+  // ---------- Drawing engine ----------
+  function strokeStyleFor(ctx, stroke) {
+    ctx.strokeStyle = stroke.color;
+    ctx.fillStyle = stroke.color;
+    ctx.lineWidth = Math.max(2, stroke.w * pitch.h);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+  }
+
+  function drawStroke(ctx, stroke) {
+    var pts = stroke.pts;
+    if (!pts || pts.length === 0) return;
+    strokeStyleFor(ctx, stroke);
+
+    if (stroke.tool === "free") {
+      ctx.beginPath();
+      ctx.moveTo(fx2px(pts[0][0]), fy2px(pts[0][1]));
+      for (var i = 1; i < pts.length; i++) ctx.lineTo(fx2px(pts[i][0]), fy2px(pts[i][1]));
+      ctx.stroke();
+      return;
+    }
+
+    // segment tools: line / arrow / dash
+    var x1 = fx2px(pts[0][0]), y1 = fy2px(pts[0][1]);
+    var x2 = fx2px(pts[1][0]), y2 = fy2px(pts[1][1]);
+
+    if (stroke.tool === "dash") {
+      var dash = Math.max(8, ctx.lineWidth * 2.4);
+      if (HAS_DASH) {
+        ctx.setLineDash([dash, dash * 0.8]);
+        line(ctx, x1, y1, x2, y2);
+        ctx.setLineDash([]);
+      } else {
+        dashedLine(ctx, x1, y1, x2, y2, dash);
+      }
+      return;
+    }
+
+    line(ctx, x1, y1, x2, y2);
+
+    if (stroke.tool === "arrow") {
+      var ang = Math.atan2(y2 - y1, x2 - x1);
+      var head = Math.max(10, ctx.lineWidth * 3.2);
+      ctx.beginPath();
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - head * Math.cos(ang - 0.4), y2 - head * Math.sin(ang - 0.4));
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - head * Math.cos(ang + 0.4), y2 - head * Math.sin(ang + 0.4));
+      ctx.stroke();
+    }
+  }
+
+  function dashedLine(ctx, x1, y1, x2, y2, dash) {
+    var dx = x2 - x1, dy = y2 - y1;
+    var len = Math.sqrt(dx * dx + dy * dy);
+    if (len === 0) return;
+    var steps = Math.floor(len / dash);
+    var ux = dx / len, uy = dy / len;
+    ctx.beginPath();
+    for (var i = 0; i < steps; i += 2) {
+      var sx = x1 + ux * dash * i, sy = y1 + uy * dash * i;
+      var ex = x1 + ux * dash * (i + 1), ey = y1 + uy * dash * (i + 1);
+      ctx.moveTo(sx, sy); ctx.lineTo(ex, ey);
+    }
+    ctx.stroke();
+  }
+
+  function blitCommitted() {
+    drawCtx.clearRect(0, 0, viewW, viewH);
+    drawCtx.drawImage(committed, 0, 0, viewW, viewH);
+  }
+
+  function redrawAll() {
+    committedCtx.clearRect(0, 0, viewW, viewH);
+    for (var i = 0; i < strokes.length; i++) drawStroke(committedCtx, strokes[i]);
+    blitCommitted();
+  }
+
+  function commitCurrent() {
+    if (!cur) return;
+    var ok = false;
+    if (cur.tool === "free") ok = cur.pts.length > 1;
+    else ok = cur.pts.length === 2 &&
+      (Math.abs(cur.pts[0][0] - cur.pts[1][0]) > 0.004 || Math.abs(cur.pts[0][1] - cur.pts[1][1]) > 0.004);
+    if (ok) {
+      strokes.push(cur);
+      drawStroke(committedCtx, cur);
+    }
+    cur = null;
+    lastPx = null;
+    blitCommitted();
+  }
+
+  function eraseAt(fxPt, fyPt) {
+    var thresh = Math.max(14, strokeWFrac * pitch.h + 10);
+    var tx = fx2px(fxPt), ty = fy2px(fyPt);
+    for (var i = strokes.length - 1; i >= 0; i--) {
+      var s = strokes[i];
+      var pts = s.pts, hit = false;
+      if (s.tool === "free") {
+        for (var k = 0; k < pts.length - 1; k++) {
+          if (distToSeg(tx, ty, fx2px(pts[k][0]), fy2px(pts[k][1]), fx2px(pts[k+1][0]), fy2px(pts[k+1][1])) <= thresh) { hit = true; break; }
+        }
+      } else {
+        hit = distToSeg(tx, ty, fx2px(pts[0][0]), fy2px(pts[0][1]), fx2px(pts[1][0]), fy2px(pts[1][1])) <= thresh;
+      }
+      if (hit) { strokes.splice(i, 1); redrawAll(); return; }
+    }
+  }
+
+  function distToSeg(px, py, ax, ay, bx, by) {
+    var dx = bx - ax, dy = by - ay;
+    var l2 = dx * dx + dy * dy;
+    var t = l2 === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / l2;
+    t = clamp(t, 0, 1);
+    var cx = ax + t * dx, cy = ay + t * dy;
+    var ex = px - cx, ey = py - cy;
+    return Math.sqrt(ex * ex + ey * ey);
+  }
+
+  function clearDrawings() { strokes = []; redrawAll(); }
+
+  // ---------- Input: player drag (Move mode) ----------
+  function tokenFromTarget(node) {
+    while (node && node !== playerLayer) {
+      if (node.getAttribute && node.getAttribute("data-id")) {
+        return findPlayer(parseInt(node.getAttribute("data-id"), 10));
+      }
+      node = node.parentNode;
+    }
+    return null;
+  }
+
+  function onPlayerDown(e) {
+    if (mode !== "move") return;
+    var p = tokenFromTarget(e.target);
+    if (!p) return;
+    e.preventDefault();
+    // Preserve the grab offset so the token doesn't jump under the finger.
+    var pt = eventPoint(e);
+    drag = { p: p, offX: fx2px(p.x) - pt.x, offY: fy2px(p.y) - pt.y };
+  }
+
+  function onPlayerMove(e) {
+    if (!drag) return;
+    e.preventDefault();
+    var pt = eventPoint(e);
+    drag.p.x = clamp(px2fx(pt.x + drag.offX), -0.03, 1.03);
+    drag.p.y = clamp(px2fy(pt.y + drag.offY), -0.03, 1.03);
+    drag.p.el.style.left = fx2px(drag.p.x) + "px";
+    drag.p.el.style.top = fy2px(drag.p.y) + "px";
+  }
+
+  function onPlayerUp(e) {
+    if (!drag) return;
+    drag = null;
+  }
+
+  // ---------- Input: drawing (Draw mode) ----------
+  function onDrawDown(e) {
+    if (mode !== "draw") return;
+    e.preventDefault();
+    var pt = eventPoint(e);
+    if (tool === "erase") { eraseAt(px2fx(pt.x), px2fy(pt.y)); return; }
+    var f = [px2fx(pt.x), px2fy(pt.y)];
+    if (tool === "free") {
+      cur = { tool: "free", color: color, w: strokeWFrac, pts: [f] };
+      lastPx = pt;
+    } else {
+      cur = { tool: tool, color: color, w: strokeWFrac, pts: [f, [f[0], f[1]]] };
+    }
+  }
+
+  function onDrawMove(e) {
+    if (mode !== "draw" || !cur) return;
+    e.preventDefault();
+    var pt = eventPoint(e);
+    if (cur.tool === "free") {
+      cur.pts.push([px2fx(pt.x), px2fy(pt.y)]);
+      strokeStyleFor(drawCtx, cur);
+      drawCtx.beginPath();
+      drawCtx.moveTo(lastPx.x, lastPx.y);
+      drawCtx.lineTo(pt.x, pt.y);
+      drawCtx.stroke();
+      lastPx = pt;
+    } else {
+      cur.pts[1] = [px2fx(pt.x), px2fy(pt.y)];
+      blitCommitted();
+      drawStroke(drawCtx, cur);
+    }
+  }
+
+  function onDrawUp(e) {
+    if (mode !== "draw" || !cur) return;
+    e.preventDefault();
+    commitCurrent();
+  }
+
+  // ---------- Modes / toolbar ----------
+  function setMode(m) {
+    mode = m;
+    if (mode === "move") {
+      drawCanvas.style.pointerEvents = "none";
+      playerLayer.style.pointerEvents = "auto";
+    } else {
+      drawCanvas.style.pointerEvents = "auto";
+      playerLayer.style.pointerEvents = "none";
+    }
+    updateToolbar();
+  }
+
+  function setTool(t) { tool = t; setMode("draw"); }
+
+  function setColor(c) { color = c; updateToolbar(); }
+
+  function updateToolbar() {
+    setActive("btnMove", mode === "move");
+    setActive("btnFree", mode === "draw" && tool === "free");
+    setActive("btnLine", mode === "draw" && tool === "line");
+    setActive("btnArrow", mode === "draw" && tool === "arrow");
+    setActive("btnDash", mode === "draw" && tool === "dash");
+    setActive("btnErase", mode === "draw" && tool === "erase");
+    swActive("swA", "#ffdd00"); swActive("swB", "#ffffff"); swActive("swC", "#111111");
+    swActive("swD", "#1f6dff"); swActive("swE", "#e53935");
+    document.getElementById("btnFormation").firstChild.nodeValue = FORMATIONS[currentFormation].label;
+  }
+  function setActive(id, on) {
+    var el = document.getElementById(id);
+    el.className = on ? "tb active" : (el.className.indexOf("wide") !== -1 ? "tb wide" : "tb");
+  }
+  function swActive(id, c) {
+    var el = document.getElementById(id);
+    var base = "swatch";
+    el.className = (color.toLowerCase() === c.toLowerCase()) ? base + " active" : base;
+  }
+
+  function cycleFormation() {
+    var idx = 0;
+    for (var i = 0; i < FORMATION_ORDER.length; i++) if (FORMATION_ORDER[i] === currentFormation) idx = i;
+    var next = FORMATION_ORDER[(idx + 1) % FORMATION_ORDER.length];
+    applyFormation(next);
+    updateToolbar();
+  }
+
+  // ---------- Save / Load ----------
+  function serialize() {
+    var ps = [];
+    for (var i = 0; i < players.length; i++) {
+      var p = players[i];
+      ps.push({ team: p.team, number: p.number, x: p.x, y: p.y, isBall: p.isBall });
+    }
+    return { formation: currentFormation, players: ps, strokes: strokes };
+  }
+
+  function deserialize(data) {
+    clearPlayers();
+    currentFormation = data.formation || "442";
+    var ps = data.players || [];
+    for (var i = 0; i < ps.length; i++) {
+      makePlayer(ps[i].team, ps[i].number, ps[i].x, ps[i].y, ps[i].isBall);
+    }
+    strokes = data.strokes || [];
+    positionAll();
+    redrawAll();
+    updateToolbar();
+  }
+
+  function openOverlay() { overlay.className = "open"; }
+  function closeOverlay() { overlay.className = ""; }
+
+  function openSave() {
+    sheetTitle.innerHTML = "Save layout";
+    sheetBody.innerHTML = "";
+    var input = document.createElement("input");
+    input.type = "text";
+    input.setAttribute("placeholder", "Layout name");
+    input.value = "Play " + (getIndex().length + 1);
+    sheetBody.appendChild(input);
+    var hint = document.createElement("div");
+    hint.className = "hint";
+    hint.appendChild(document.createTextNode("Saves player positions and drawings to this iPad."));
+    sheetBody.appendChild(hint);
+    var save = document.createElement("button");
+    save.className = "btn primary full";
+    save.appendChild(document.createTextNode("Save"));
+    save.onclick = function () {
+      var name = trim(input.value);
+      if (!name) { input.focus(); return; }
+      doSave(name);
+      closeOverlay();
+    };
+    sheetBody.appendChild(save);
+    openOverlay();
+  }
+
+  function doSave(name) {
+    storeSet(LAYOUT_PREFIX + name, JSON.stringify(serialize()));
+    var idx = getIndex();
+    if (idx.indexOf(name) === -1) { idx.push(name); setIndex(idx); }
+  }
+
+  function openLoad() {
+    sheetTitle.innerHTML = "Load layout";
+    sheetBody.innerHTML = "";
+    var idx = getIndex();
+    if (idx.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "empty";
+      empty.appendChild(document.createTextNode("No saved layouts yet. Use Save to create one."));
+      sheetBody.appendChild(empty);
+    } else {
+      for (var i = 0; i < idx.length; i++) buildLoadRow(idx[i]);
+    }
+    openOverlay();
+  }
+
+  function buildLoadRow(name) {
+    var row = document.createElement("div");
+    row.className = "rowItem";
+    var nm = document.createElement("div");
+    nm.className = "name";
+    nm.appendChild(document.createTextNode(name));
+    row.appendChild(nm);
+
+    var load = document.createElement("button");
+    load.className = "btn primary";
+    load.appendChild(document.createTextNode("Load"));
+    load.onclick = function () {
+      var raw = storeGet(LAYOUT_PREFIX + name);
+      if (raw) { try { deserialize(JSON.parse(raw)); } catch (e) {} }
+      closeOverlay();
+    };
+    row.appendChild(load);
+
+    var del = document.createElement("button");
+    del.className = "btn danger";
+    del.appendChild(document.createTextNode("Delete"));
+    del.onclick = function () {
+      storeRemove(LAYOUT_PREFIX + name);
+      var idx = getIndex();
+      var pos = idx.indexOf(name);
+      if (pos !== -1) { idx.splice(pos, 1); setIndex(idx); }
+      openLoad();
+    };
+    row.appendChild(del);
+
+    sheetBody.appendChild(row);
+  }
+
+  function trim(s) { return String(s).replace(/^\s+|\s+$/g, ""); }
+
+  // ---------- Layout / resize ----------
+  function relayout() {
+    viewW = window.innerWidth;
+    viewH = window.innerHeight;
+    dpr = window.devicePixelRatio || 1;
+    sizeCanvas(fieldCanvas, fieldCtx);
+    sizeCanvas(drawCanvas, drawCtx);
+    sizeCanvas(committed, committedCtx);
+    computePitch();
+    drawField();
+    positionAll();
+    redrawAll();
+  }
+
+  // ---------- Wire up ----------
+  function bindTouch(target, down, move, up) {
+    target.addEventListener("touchstart", down, false);
+    target.addEventListener("touchmove", move, false);
+    target.addEventListener("touchend", up, false);
+    target.addEventListener("touchcancel", up, false);
+    target.addEventListener("mousedown", down, false);
+  }
+
+  // Player drag: mouse move/up on document so drag continues off the token
+  playerLayer.addEventListener("touchstart", onPlayerDown, false);
+  playerLayer.addEventListener("touchmove", onPlayerMove, false);
+  playerLayer.addEventListener("touchend", onPlayerUp, false);
+  playerLayer.addEventListener("touchcancel", onPlayerUp, false);
+  playerLayer.addEventListener("mousedown", onPlayerDown, false);
+  document.addEventListener("mousemove", onPlayerMove, false);
+  document.addEventListener("mouseup", onPlayerUp, false);
+
+  // Drawing
+  drawCanvas.addEventListener("touchstart", onDrawDown, false);
+  drawCanvas.addEventListener("touchmove", onDrawMove, false);
+  drawCanvas.addEventListener("touchend", onDrawUp, false);
+  drawCanvas.addEventListener("touchcancel", onDrawUp, false);
+  drawCanvas.addEventListener("mousedown", onDrawDown, false);
+  drawCanvas.addEventListener("mousemove", function (e) { if (e.buttons || drawMouseDown) onDrawMove(e); }, false);
+  drawCanvas.addEventListener("mouseup", onDrawUp, false);
+  var drawMouseDown = false;
+  drawCanvas.addEventListener("mousedown", function () { drawMouseDown = true; }, false);
+  document.addEventListener("mouseup", function () { drawMouseDown = false; }, false);
+
+  // Toolbar buttons
+  document.getElementById("btnMove").onclick = function () { setMode("move"); };
+  document.getElementById("btnFree").onclick = function () { setTool("free"); };
+  document.getElementById("btnLine").onclick = function () { setTool("line"); };
+  document.getElementById("btnArrow").onclick = function () { setTool("arrow"); };
+  document.getElementById("btnDash").onclick = function () { setTool("dash"); };
+  document.getElementById("btnErase").onclick = function () { setTool("erase"); };
+  document.getElementById("swA").onclick = function () { setColor("#ffdd00"); };
+  document.getElementById("swB").onclick = function () { setColor("#ffffff"); };
+  document.getElementById("swC").onclick = function () { setColor("#111111"); };
+  document.getElementById("swD").onclick = function () { setColor("#1f6dff"); };
+  document.getElementById("swE").onclick = function () { setColor("#e53935"); };
+  document.getElementById("btnUndo").onclick = function () { if (strokes.length) { strokes.pop(); redrawAll(); } };
+  document.getElementById("btnClearDraw").onclick = clearDrawings;
+  document.getElementById("btnFormation").onclick = cycleFormation;
+  document.getElementById("btnAddHome").onclick = function () { addTeamPlayer("home"); };
+  document.getElementById("btnDelHome").onclick = function () { removeTeamPlayer("home"); };
+  document.getElementById("btnAddAway").onclick = function () { addTeamPlayer("away"); };
+  document.getElementById("btnDelAway").onclick = function () { removeTeamPlayer("away"); };
+  document.getElementById("btnBall").onclick = toggleBall;
+  document.getElementById("btnReset").onclick = resetPlayers;
+  document.getElementById("btnSave").onclick = openSave;
+  document.getElementById("btnLoad").onclick = openLoad;
+  document.getElementById("btnHide").onclick = function () { body.className = "collapsed"; relayout(); };
+  document.getElementById("menuBtn").onclick = function () { body.className = ""; relayout(); };
+  document.getElementById("sheetClose").onclick = closeOverlay;
+  overlay.onclick = function (e) { if (e.target === overlay) closeOverlay(); };
+
+  // Prevent page scroll / rubber-band, but allow scrolling inside the modal sheet.
+  document.addEventListener("touchmove", function (e) {
+    var n = e.target;
+    while (n) { if (n === sheet) return; n = n.parentNode; }
+    e.preventDefault();
+  }, false);
+
+  window.addEventListener("resize", relayout, false);
+  window.addEventListener("orientationchange", function () { setTimeout(relayout, 250); }, false);
+
+  // ---------- Boot ----------
+  applyFormation("442");
+  makePlayer("ball", 0, 0.5, 0.5, true);
+  relayout();
+  setMode("move");
+  updateToolbar();
+})();
+</script>
+</body>
+</html>
