@@ -22,11 +22,16 @@
   #app { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
   #fieldCanvas { position: absolute; top: 0; left: 0; z-index: 1; }
   #drawCanvas  { position: absolute; top: 0; left: 0; z-index: 2; }
-  #playerLayer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3; }
+  /* The layer covers the whole pitch but takes no touches itself, so empty grass
+     falls through to the drawing canvas beneath. Only the dots claim a touch -
+     which is what lets a player be grabbed whatever tool is selected. */
+  #playerLayer { position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+                 z-index: 3; pointer-events: none; }
 
   /* Player tokens */
   .token {
     position: absolute;
+    pointer-events: auto;
     -webkit-transform: translate(-50%, -50%);
     transform: translate(-50%, -50%);
     border-radius: 50%;
@@ -39,11 +44,76 @@
   .token.home { background: #1f6dff; }
   .token.away { background: #e53935; }
   .token.gk   { background: #ffd23f; color: #16351a; }
+  /* Full name under a token. pointer-events:none keeps it out of drag hit-testing. */
+  .token .cap {
+    position: absolute;
+    top: 100%; left: 50%;
+    -webkit-transform: translate(-50%, 2px);
+    transform: translate(-50%, 2px);
+    font-weight: 700; color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.95), 0 0 3px rgba(0,0,0,0.85);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  body.hidenames #playerLayer .cap { display: none; }
+  .token.dragging { z-index: 20; opacity: 0.92; }
+  .token.ghosted { opacity: 0.28; }
   .token.ball {
     background: #ffffff;
     background: -webkit-radial-gradient(35% 30%, #ffffff 0%, #ffffff 55%, #d0d0d0 100%);
     background: radial-gradient(circle at 35% 30%, #ffffff 0%, #ffffff 55%, #d0d0d0 100%);
     border: 1px solid #555;
+  }
+
+  /* Bench drawer: squad pool, slides up over the pitch */
+  #bench {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 7;
+    background: rgba(12,22,15,0.95);
+    border-top: 1px solid rgba(255,255,255,0.18);
+    padding-bottom: 4px;
+    /* A big squad must not swallow the pitch; past this the drawer scrolls. */
+    max-height: 46%; overflow-y: auto;
+    -webkit-transform: translateY(105%);
+    transform: translateY(105%);
+    -webkit-transition: -webkit-transform 0.18s ease-out;
+    transition: transform 0.18s ease-out;
+  }
+  #bench.open { -webkit-transform: translateY(0); transform: translateY(0); }
+  #benchBar {
+    display: -webkit-box; display: -webkit-flex; display: flex;
+    -webkit-align-items: center; align-items: center;
+    padding: 5px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+  #benchHint {
+    -webkit-box-flex: 1; -webkit-flex: 1; flex: 1 1 auto;
+    font-size: 13px; color: #a9b6ac;
+  }
+  .benchRow {
+    display: -webkit-box; display: -webkit-flex; display: flex;
+    -webkit-align-items: center; align-items: center;
+    padding: 2px 8px;
+  }
+  .benchLbl { width: 38px; font-size: 13px; font-weight: 700; }
+  .benchLbl.home { color: #7aa8ff; }
+  .benchLbl.away { color: #ff8a88; }
+  .btn.mini {
+    height: 34px; min-width: 36px; padding: 0 10px; margin-left: 4px;
+    font-size: 18px; line-height: 30px;
+  }
+  .benchChips {
+    -webkit-box-flex: 1; -webkit-flex: 1; flex: 1 1 auto;
+    display: -webkit-box; display: -webkit-flex; display: flex;
+    -webkit-flex-wrap: wrap; flex-wrap: wrap;
+    -webkit-align-items: center; align-items: center;
+    margin-left: 10px; min-height: 54px;
+  }
+  .benchChips .none { font-size: 13px; color: #8a978d; }
+  .token.inbench {
+    position: relative; top: auto; left: auto;
+    -webkit-transform: none; transform: none;
+    -webkit-flex: 0 0 auto; flex: 0 0 auto;
+    margin: 2px 14px 15px 2px;
   }
 
   /* Toolbar */
@@ -135,6 +205,7 @@
   .btn.danger  { background: #7a2a28; border-color: #b25350; }
   .btn.full { width: 100%; margin-left: 0; height: 46px; margin-top: 4px; }
   .hint { font-size: 13px; color: #a9b6ac; margin: 6px 0 14px; }
+  .hint.warn { color: #ffb4b0; font-weight: 600; }
   .empty { color: #a9b6ac; font-size: 15px; padding: 10px 0; }
 </style>
 </head>
@@ -166,10 +237,8 @@
     <div class="spacer"></div>
     <div class="group">
       <button class="tb wide" id="btnFormation">4-4-2</button>
-      <button class="tb" id="btnAddHome">+Blue</button>
-      <button class="tb" id="btnDelHome">&minus;Blue</button>
-      <button class="tb" id="btnAddAway">+Red</button>
-      <button class="tb" id="btnDelAway">&minus;Red</button>
+      <button class="tb wide" id="btnBench">Bench</button>
+      <button class="tb wide" id="btnNames">Names</button>
       <button class="tb" id="btnBall">Ball</button>
       <button class="tb" id="btnReset">Reset</button>
       <span class="sep"></span>
@@ -179,6 +248,26 @@
     </div>
   </div>
   <button id="menuBtn">Menu</button>
+
+  <div id="bench">
+    <div id="benchBar">
+      <div id="benchHint">Drag a player up onto the pitch, or drag one down here to take them off.</div>
+      <button class="btn" id="btnSquad">Squad</button>
+      <button class="btn" id="benchClose">Close</button>
+    </div>
+    <div class="benchRow">
+      <div class="benchLbl home">Blue</div>
+      <button class="btn mini" id="btnAddHome">+</button>
+      <button class="btn mini" id="btnDelHome">&minus;</button>
+      <div class="benchChips" id="benchHome"></div>
+    </div>
+    <div class="benchRow">
+      <div class="benchLbl away">Red</div>
+      <button class="btn mini" id="btnAddAway">+</button>
+      <button class="btn mini" id="btnDelAway">&minus;</button>
+      <div class="benchChips" id="benchAway"></div>
+    </div>
+  </div>
 
   <div id="overlay">
     <div id="sheet">
@@ -202,6 +291,22 @@
   var sheet = document.getElementById("sheet");
   var sheetTitle = document.getElementById("sheetTitle");
   var sheetBody = document.getElementById("sheetBody");
+  var bench = document.getElementById("bench");
+  var benchHome = document.getElementById("benchHome");
+  var benchAway = document.getElementById("benchAway");
+
+  // Placeholder shown while a bench row is empty; kept as one node per row rather
+  // than rebuilt, so tokens can simply be appended alongside it.
+  var noneHome = benchNote(benchHome);
+  var noneAway = benchNote(benchAway);
+
+  function benchNote(container) {
+    var n = document.createElement("span");
+    n.className = "none";
+    n.appendChild(document.createTextNode("Nobody on the bench."));
+    container.appendChild(n);
+    return n;
+  }
 
   var fieldCtx = fieldCanvas.getContext("2d");
   var drawCtx = drawCanvas.getContext("2d");
@@ -213,14 +318,20 @@
   // ---------- State ----------
   var viewW = 0, viewH = 0, dpr = 1;
   var pitch = { x: 0, y: 0, w: 0, h: 0 };
-  var players = [];      // {team,number,x,y,isBall,el}
+  var players = [];      // see makePlayer() for the shape
   var strokes = [];      // {tool,color,w,pts:[[fx,fy],...]}
   var mode = "move";     // "move" | "draw"
   var tool = "free";     // "free" | "line" | "arrow" | "dash" | "erase"
   var color = "#ffdd00";
   var strokeWFrac = 0.006;
+  var MIN_PT_PX = 2;     // drop freehand samples closer than this to the previous one
   var currentFormation = "442";
   var nextId = 1;
+  var benchOpen = false;
+  var showNames = true;
+  var collapsed = false;
+  var BENCH_TOKEN_PX = 40;
+  var DRAG_TAP_PX = 6;   // finger travel under this counts as a tap, not a drag
 
   var drag = null;       // active token drag
   var cur = null;        // active stroke
@@ -256,22 +367,57 @@
   };
   var FORMATION_ORDER = ["442", "433", "4231", "352"];
 
+  // Default names come from the formation slot, so a fresh board reads like a team
+  // sheet instead of a numbered grid. Index-for-index with FORMATIONS[..].pos.
+  var POSITIONS = {
+    "442":  ["GK","LB","CB","CB","RB","LM","CM","CM","RM","ST","ST"],
+    "433":  ["GK","LB","CB","CB","RB","CM","CM","CM","LW","ST","RW"],
+    "4231": ["GK","LB","CB","CB","RB","DM","DM","LAM","CAM","RAM","ST"],
+    "352":  ["GK","CB","CB","CB","LWB","CM","CM","CM","RWB","ST","ST"]
+  };
+
+  // The away team attacks the other way, so the same y is their opposite flank.
+  function slotLabel(formation, i, team) {
+    var list = POSITIONS[formation] || POSITIONS["442"];
+    if (i < 0 || i >= list.length) return "SUB";
+    var lbl = list[i];
+    if (team === "away") {
+      if (lbl.charAt(0) === "L") lbl = "R" + lbl.slice(1);
+      else if (lbl.charAt(0) === "R") lbl = "L" + lbl.slice(1);
+    }
+    return lbl;
+  }
+
   // ---------- Storage (localStorage with in-memory fallback) ----------
   var INDEX_KEY = "tb_index";
   var LAYOUT_PREFIX = "tb_layout_";
   var memStore = {};
 
+  // memStore shadows localStorage for keys whose write failed (storage full, or
+  // private mode). It has to win on read: localStorage may still hold an older
+  // copy of that key, and returning it would silently undo the newer value.
+  function hasMem(key) { return Object.prototype.hasOwnProperty.call(memStore, key); }
+
   function storeGet(key) {
+    if (hasMem(key)) return memStore[key];
     try { return window.localStorage.getItem(key); }
-    catch (e) { return (key in memStore) ? memStore[key] : null; }
+    catch (e) { return null; }
   }
+  // Returns false when the value could only be held in memory - i.e. it will not
+  // survive relaunching the app. Callers writing user data must surface that.
   function storeSet(key, val) {
-    try { window.localStorage.setItem(key, val); }
-    catch (e) { memStore[key] = val; }
+    try {
+      window.localStorage.setItem(key, val);
+      delete memStore[key];
+      return true;
+    } catch (e) {
+      memStore[key] = val;
+      return false;
+    }
   }
   function storeRemove(key) {
-    try { window.localStorage.removeItem(key); }
-    catch (e) { delete memStore[key]; }
+    delete memStore[key];
+    try { window.localStorage.removeItem(key); } catch (e) {}
   }
   function getIndex() {
     var raw = storeGet(INDEX_KEY);
@@ -279,10 +425,15 @@
     try { var a = JSON.parse(raw); return (a && a.length) ? a : []; }
     catch (e) { return []; }
   }
-  function setIndex(arr) { storeSet(INDEX_KEY, JSON.stringify(arr)); }
+  function setIndex(arr) { return storeSet(INDEX_KEY, JSON.stringify(arr)); }
 
   // ---------- Geometry helpers ----------
   function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+  // Stroke points are pitch fractions. 4 decimals is ~0.05px on a full-size pitch
+  // - well inside the 2px minimum line width - and cuts a saved layout's JSON by
+  // about 60%, which is what keeps big sessions under the storage quota.
+  function r4(v) { return Math.round(v * 10000) / 10000; }
 
   function computePitch() {
     var pad = 0.028;
@@ -300,7 +451,7 @@
   function topInset() {
     // Reserve room so the pitch clears the toolbar (or nothing when collapsed).
     var tb = document.getElementById("toolbar");
-    if (body.className.indexOf("collapsed") !== -1) return 0;
+    if (collapsed) return 0;
     return tb ? tb.offsetHeight : 0;
   }
 
@@ -420,16 +571,44 @@
   // ---------- Players ----------
   function tokenDiameter() { return clamp(pitch.h * 0.062, 22, 46); }
 
-  function makePlayer(team, number, x, y, isBall) {
-    var p = { id: nextId++, team: team, number: number, x: x, y: y, isBall: !!isBall, el: null };
+  // A player is one object and one element for its whole life. onField decides
+  // which container it lives in, so moving between pitch and bench never destroys
+  // the name. custom marks a name the coach typed, which formation changes keep.
+  function makePlayer(spec) {
+    var p = {
+      id: nextId++,
+      team: spec.team,
+      name: spec.name || "",
+      x: (spec.x === undefined) ? 0.5 : spec.x,
+      y: (spec.y === undefined) ? 0.5 : spec.y,
+      isBall: !!spec.isBall,
+      onField: spec.onField !== false,
+      custom: !!spec.custom,
+      gk: !!spec.gk,
+      slot: (typeof spec.slot === "number") ? spec.slot : -1,
+      el: null, cap: null
+    };
     var el = document.createElement("div");
-    el.className = "token " + (isBall ? "ball" : team) + (number === 1 && !isBall ? " gk" : "");
     el.setAttribute("data-id", String(p.id));
-    if (!isBall) el.appendChild(document.createTextNode(String(number)));
-    playerLayer.appendChild(el);
+    if (!p.isBall) {
+      var cap = document.createElement("span");
+      cap.className = "cap";
+      cap.appendChild(document.createTextNode(""));
+      el.appendChild(cap);
+      p.cap = cap;
+    }
     p.el = el;
     players.push(p);
+    paintPlayer(p);
     return p;
+  }
+
+  function paintPlayer(p) {
+    p.el.className = "token " + (p.isBall ? "ball" : p.team) +
+      ((p.gk && !p.isBall) ? " gk" : "") + (p.onField ? "" : " inbench");
+    if (p.isBall) return;
+    // The dot carries no text; the name underneath is the only label.
+    p.cap.firstChild.nodeValue = trim(p.name);
   }
 
   function findPlayer(id) {
@@ -437,48 +616,23 @@
     return null;
   }
 
+  function detach(el) { if (el && el.parentNode) el.parentNode.removeChild(el); }
+
   function clearPlayers() {
-    for (var i = 0; i < players.length; i++) {
-      if (players[i].el && players[i].el.parentNode) players[i].el.parentNode.removeChild(players[i].el);
-    }
+    for (var i = 0; i < players.length; i++) detach(players[i].el);
     players = [];
+  }
+
+  function removePlayer(p) {
+    detach(p.el);
+    for (var i = 0; i < players.length; i++) {
+      if (players[i].id === p.id) { players.splice(i, 1); break; }
+    }
   }
 
   function hasBall() {
     for (var i = 0; i < players.length; i++) if (players[i].isBall) return true;
     return false;
-  }
-
-  function positionAll() {
-    var d = tokenDiameter();
-    for (var i = 0; i < players.length; i++) {
-      var p = players[i];
-      var dd = p.isBall ? d * 0.6 : d;
-      var el = p.el;
-      el.style.width = dd + "px";
-      el.style.height = dd + "px";
-      el.style.left = fx2px(p.x) + "px";
-      el.style.top = fy2px(p.y) + "px";
-      if (!p.isBall) {
-        el.style.fontSize = (dd * 0.42) + "px";
-        el.style.lineHeight = (dd - 4) + "px";
-      }
-    }
-  }
-
-  function applyFormation(name) {
-    var ball = hasBall();
-    clearPlayers();
-    var pos = FORMATIONS[name].pos;
-    for (var i = 0; i < pos.length; i++) {
-      makePlayer("home", i + 1, pos[i][0], pos[i][1], false);
-    }
-    for (var j = 0; j < pos.length; j++) {
-      makePlayer("away", j + 1, 1 - pos[j][0], pos[j][1], false);
-    }
-    if (ball) makePlayer("ball", 0, 0.5, 0.5, true);
-    currentFormation = name;
-    positionAll();
   }
 
   function teamPlayers(team) {
@@ -487,41 +641,144 @@
     return out;
   }
 
-  function addTeamPlayer(team) {
-    var list = teamPlayers(team);
-    var maxN = 0;
-    for (var i = 0; i < list.length; i++) if (list[i].number > maxN) maxN = list[i].number;
-    var cx = (team === "home") ? 0.28 : 0.72;
-    makePlayer(team, maxN + 1, cx, 0.5, false);
-    positionAll();
+  function benchPlayers(team) {
+    var out = [], list = teamPlayers(team);
+    for (var i = 0; i < list.length; i++) if (!list[i].onField) out.push(list[i]);
+    return out;
   }
 
+  function playerParent(p) {
+    if (p.onField || p.isBall) return playerLayer;
+    return (p.team === "away") ? benchAway : benchHome;
+  }
+
+  // Single place that puts every token in the right container at the right size,
+  // for both surfaces. Skips whatever is mid-drag, which owns its own position.
+  function layoutPlayers() {
+    var d = tokenDiameter();
+    for (var i = 0; i < players.length; i++) {
+      var p = players[i];
+      if (drag && drag.p === p && drag.moved && !drag.ghost) continue;
+      var el = p.el;
+      var onField = p.onField || p.isBall;
+      var dd = onField ? (p.isBall ? d * 0.6 : d) : BENCH_TOKEN_PX;
+      var parent = playerParent(p);
+      if (el.parentNode !== parent) { detach(el); parent.appendChild(el); }
+      el.style.width = dd + "px";
+      el.style.height = dd + "px";
+      if (onField) {
+        el.style.left = fx2px(p.x) + "px";
+        el.style.top = fy2px(p.y) + "px";
+      } else {
+        el.style.left = "";
+        el.style.top = "";
+      }
+      if (!p.isBall) p.cap.style.fontSize = captionPx(dd) + "px";
+    }
+    updateBenchNotes();
+  }
+
+  function updateBenchNotes() {
+    noneHome.style.display = benchPlayers("home").length ? "none" : "inline";
+    noneAway.style.display = benchPlayers("away").length ? "none" : "inline";
+  }
+
+  // Re-lays the squad into the current formation without rebuilding it, so names
+  // survive. Whoever is already on the pitch keeps the shirt: they take the slots
+  // first, the bench fills anything left over, and the surplus stays benched.
+  function applyFormation(name) {
+    currentFormation = name;
+    var pos = FORMATIONS[name].pos;
+    var teams = ["home", "away"];
+    for (var t = 0; t < teams.length; t++) {
+      var team = teams[t];
+      var list = teamPlayers(team);
+      var onField = [], benched = [];
+      for (var i = 0; i < list.length; i++) (list[i].onField ? onField : benched).push(list[i]);
+      var ordered = onField.concat(benched);
+      for (var k = 0; k < ordered.length; k++) {
+        var p = ordered[k];
+        if (k < pos.length) {
+          p.onField = true;
+          p.gk = (k === 0);
+          p.slot = k;
+          p.x = (team === "home") ? pos[k][0] : 1 - pos[k][0];
+          p.y = pos[k][1];
+        } else {
+          p.onField = false;
+          p.gk = false;
+          p.slot = -1;
+        }
+        if (!p.custom) p.name = slotLabel(name, p.slot, team);
+        paintPlayer(p);
+      }
+    }
+    layoutPlayers();
+  }
+
+  function buildSquad() {
+    clearPlayers();
+    var pos = FORMATIONS[currentFormation].pos;
+    for (var t = 0; t < 2; t++) {
+      var team = (t === 0) ? "home" : "away";
+      for (var i = 0; i < pos.length; i++) {
+        makePlayer({
+          team: team, name: slotLabel(currentFormation, i, team), slot: i, gk: (i === 0),
+          x: (team === "home") ? pos[i][0] : 1 - pos[i][0], y: pos[i][1]
+        });
+      }
+    }
+  }
+
+  // New squad members start on the bench and are named straight away - naming is
+  // the whole point of adding one.
+  function addTeamPlayer(team) {
+    var p = makePlayer({ team: team, name: "SUB", onField: false, slot: -1 });
+    openBench(true);
+    layoutPlayers();
+    openRename(p, null);
+  }
+
+  // Take from the bench first so a tap never quietly deletes someone on the pitch.
   function removeTeamPlayer(team) {
     var list = teamPlayers(team);
     if (list.length <= 1) return;
-    var target = list[0];
-    for (var i = 1; i < list.length; i++) if (list[i].number > target.number) target = list[i];
-    if (target.el && target.el.parentNode) target.el.parentNode.removeChild(target.el);
-    for (var j = 0; j < players.length; j++) {
-      if (players[j].id === target.id) { players.splice(j, 1); break; }
+    var target = null;
+    for (var i = list.length - 1; i >= 0; i--) {
+      if (!list[i].onField) { target = list[i]; break; }
     }
+    if (!target) target = list[list.length - 1];
+    removePlayer(target);
+    layoutPlayers();
   }
 
   function toggleBall() {
     if (hasBall()) {
       for (var i = players.length - 1; i >= 0; i--) {
-        if (players[i].isBall) {
-          if (players[i].el && players[i].el.parentNode) players[i].el.parentNode.removeChild(players[i].el);
-          players.splice(i, 1);
-        }
+        if (players[i].isBall) { detach(players[i].el); players.splice(i, 1); }
       }
     } else {
-      makePlayer("ball", 0, 0.5, 0.5, true);
-      positionAll();
+      makePlayer({ team: "ball", isBall: true, x: 0.5, y: 0.5 });
     }
+    layoutPlayers();
   }
 
   function resetPlayers() { applyFormation(currentFormation); }
+
+  // ---------- Bench drawer ----------
+  function setBench(open) {
+    benchOpen = !!open;
+    bench.className = benchOpen ? "open" : "";
+    setActive("btnBench", benchOpen);
+  }
+  function openBench(force) { if (force || !benchOpen) setBench(true); }
+
+  // offsetHeight is the laid-out height, unaffected by the slide-in transform, so
+  // a drop lands correctly even while the drawer is still animating open.
+  function pointInBench(pt) {
+    if (!benchOpen) return false;
+    return pt.y >= viewH - bench.offsetHeight;
+  }
 
   // ---------- Drawing engine ----------
   function strokeStyleFor(ctx, stroke) {
@@ -645,9 +902,9 @@
 
   function clearDrawings() { strokes = []; redrawAll(); }
 
-  // ---------- Input: player drag (Move mode) ----------
+  // ---------- Input: player drag ----------
   function tokenFromTarget(node) {
-    while (node && node !== playerLayer) {
+    while (node) {
       if (node.getAttribute && node.getAttribute("data-id")) {
         return findPlayer(parseInt(node.getAttribute("data-id"), 10));
       }
@@ -656,29 +913,108 @@
     return null;
   }
 
+  // Only ever asked about a token on the pitch; a bench chip centres on the finger.
+  function tokenCenter(p) { return { x: fx2px(p.x), y: fy2px(p.y) }; }
+
   function onPlayerDown(e) {
-    if (mode !== "move") return;
     var p = tokenFromTarget(e.target);
     if (!p) return;
+    // Touching a player is always about the player, never about the selected tool:
+    // the touch landed on the dot, so the drawing canvas never sees it at all.
     e.preventDefault();
-    // Preserve the grab offset so the token doesn't jump under the finger.
     var pt = eventPoint(e);
-    drag = { p: p, offX: fx2px(p.x) - pt.x, offY: fy2px(p.y) - pt.y };
+    var fromBench = !p.onField && !p.isBall;
+    // Keep the grab offset for pitch tokens so they do not jump under the finger.
+    var c = fromBench ? pt : tokenCenter(p);
+    drag = {
+      p: p, fromBench: fromBench, ghost: null,
+      offX: c.x - pt.x, offY: c.y - pt.y,
+      startX: pt.x, startY: pt.y, moved: false
+    };
+  }
+
+  // A pitch token already lives on the player layer, so dragging it only restyles
+  // it in place - the node the touch started on is never removed.
+  function liftToken(p) {
+    p.el.className = "token " + (p.isBall ? "ball" : p.team) +
+      ((p.gk && !p.isBall) ? " gk" : "") + " dragging";
+    sizeForField(p.el, p.isBall, p.cap);
+  }
+
+  function sizeForField(el, isBall, cap) {
+    var d = tokenDiameter();
+    var dd = isBall ? d * 0.6 : d;
+    el.style.width = dd + "px";
+    el.style.height = dd + "px";
+    if (cap) cap.style.fontSize = captionPx(dd) + "px";
+  }
+
+  // Names are the only identification now that the dots are blank, so this runs
+  // well above the old label size.
+  function captionPx(dd) { return Math.max(11, Math.round(dd * 0.40)); }
+
+  // Coming off the bench, a stand-in follows the finger while the real chip stays
+  // put in the drawer. Dragging the chip itself would pull it out of the flex row,
+  // so every other chip would slide across to close the gap the moment the drag
+  // began - a reflow of the whole row under the finger, which the iPad shows as a
+  // visible stutter. The row stays still and only the stand-in moves.
+  function makeGhost(p) {
+    var g = document.createElement("div");
+    g.className = "token " + p.team + (p.gk ? " gk" : "") + " dragging";
+    var cap = document.createElement("span");
+    cap.className = "cap";
+    cap.appendChild(document.createTextNode(trim(p.name)));
+    g.appendChild(cap);
+    sizeForField(g, false, cap);
+    playerLayer.appendChild(g);
+    return g;
   }
 
   function onPlayerMove(e) {
     if (!drag) return;
     e.preventDefault();
     var pt = eventPoint(e);
-    drag.p.x = clamp(px2fx(pt.x + drag.offX), -0.03, 1.03);
-    drag.p.y = clamp(px2fy(pt.y + drag.offY), -0.03, 1.03);
-    drag.p.el.style.left = fx2px(drag.p.x) + "px";
-    drag.p.el.style.top = fy2px(drag.p.y) + "px";
+    if (!drag.moved) {
+      var mx = pt.x - drag.startX, my = pt.y - drag.startY;
+      if (mx * mx + my * my < DRAG_TAP_PX * DRAG_TAP_PX) return;   // still a tap
+      drag.moved = true;
+      if (drag.fromBench) {
+        drag.ghost = makeGhost(drag.p);
+        drag.p.el.className = drag.p.el.className + " ghosted";
+        drag.offX = 0;   // the stand-in is bigger than the chip; centre it on the finger
+        drag.offY = 0;
+      } else {
+        liftToken(drag.p);
+      }
+    }
+    var moving = drag.ghost || drag.p.el;
+    moving.style.left = (pt.x + drag.offX) + "px";
+    moving.style.top = (pt.y + drag.offY) + "px";
   }
 
   function onPlayerUp(e) {
     if (!drag) return;
+    var p = drag.p, moved = drag.moved, offX = drag.offX, offY = drag.offY;
+    var ghost = drag.ghost;
+    var pt = eventPoint(e);
     drag = null;
+    if (ghost) detach(ghost);
+    if (!moved) {
+      // Tapped, not dragged: name the player.
+      if (!p.isBall) openRename(p, null);
+      return;
+    }
+    if (!p.isBall && pointInBench(pt)) {
+      p.onField = false;
+      p.gk = false;
+      p.slot = -1;
+    } else {
+      p.onField = true;
+      p.x = clamp(px2fx(pt.x + offX), -0.03, 1.03);
+      p.y = clamp(px2fy(pt.y + offY), -0.03, 1.03);
+    }
+    paintPlayer(p);     // rebuilds className, clearing "ghosted" / "dragging"
+    layoutPlayers();
   }
 
   // ---------- Input: drawing (Draw mode) ----------
@@ -687,7 +1023,7 @@
     e.preventDefault();
     var pt = eventPoint(e);
     if (tool === "erase") { eraseAt(px2fx(pt.x), px2fy(pt.y)); return; }
-    var f = [px2fx(pt.x), px2fy(pt.y)];
+    var f = [r4(px2fx(pt.x)), r4(px2fy(pt.y))];
     if (tool === "free") {
       cur = { tool: "free", color: color, w: strokeWFrac, pts: [f] };
       lastPx = pt;
@@ -701,7 +1037,13 @@
     e.preventDefault();
     var pt = eventPoint(e);
     if (cur.tool === "free") {
-      cur.pts.push([px2fx(pt.x), px2fy(pt.y)]);
+      // touchmove keeps firing at ~60Hz even when the finger is barely moving, so
+      // pausing mid-stroke piles up hundreds of near-identical points that every
+      // later Undo/Erase redraw has to replay. Normal drawing clears this
+      // threshold on every frame and is unaffected.
+      var dx = pt.x - lastPx.x, dy = pt.y - lastPx.y;
+      if (dx * dx + dy * dy < MIN_PT_PX * MIN_PT_PX) return;
+      cur.pts.push([r4(px2fx(pt.x)), r4(px2fy(pt.y))]);
       strokeStyleFor(drawCtx, cur);
       drawCtx.beginPath();
       drawCtx.moveTo(lastPx.x, lastPx.y);
@@ -709,7 +1051,7 @@
       drawCtx.stroke();
       lastPx = pt;
     } else {
-      cur.pts[1] = [px2fx(pt.x), px2fy(pt.y)];
+      cur.pts[1] = [r4(px2fx(pt.x)), r4(px2fy(pt.y))];
       blitCommitted();
       drawStroke(drawCtx, cur);
     }
@@ -724,13 +1066,10 @@
   // ---------- Modes / toolbar ----------
   function setMode(m) {
     mode = m;
-    if (mode === "move") {
-      drawCanvas.style.pointerEvents = "none";
-      playerLayer.style.pointerEvents = "auto";
-    } else {
-      drawCanvas.style.pointerEvents = "auto";
-      playerLayer.style.pointerEvents = "none";
-    }
+    // Only the canvas is gated by the mode. The player layer is left alone so the
+    // CSS pass-through keeps working - setting pointer-events inline here would
+    // override it and make the whole layer swallow touches meant for drawing.
+    drawCanvas.style.pointerEvents = (mode === "move") ? "none" : "auto";
     updateToolbar();
   }
 
@@ -745,13 +1084,24 @@
     setActive("btnArrow", mode === "draw" && tool === "arrow");
     setActive("btnDash", mode === "draw" && tool === "dash");
     setActive("btnErase", mode === "draw" && tool === "erase");
+    setActive("btnBench", benchOpen);
+    setActive("btnNames", showNames);
     swActive("swA", "#ffdd00"); swActive("swB", "#ffffff"); swActive("swC", "#111111");
     swActive("swD", "#1f6dff"); swActive("swE", "#e53935");
     document.getElementById("btnFormation").firstChild.nodeValue = FORMATIONS[currentFormation].label;
   }
   function setActive(id, on) {
     var el = document.getElementById(id);
-    el.className = on ? "tb active" : (el.className.indexOf("wide") !== -1 ? "tb wide" : "tb");
+    var wide = el.className.indexOf("wide") !== -1 ? " wide" : "";
+    el.className = "tb" + wide + (on ? " active" : "");
+  }
+
+  // body carries two independent flags, so compose rather than overwrite.
+  function setBodyClasses() {
+    var c = [];
+    if (collapsed) c.push("collapsed");
+    if (!showNames) c.push("hidenames");
+    body.className = c.join(" ");
   }
   function swActive(id, c) {
     var el = document.getElementById(id);
@@ -772,22 +1122,137 @@
     var ps = [];
     for (var i = 0; i < players.length; i++) {
       var p = players[i];
-      ps.push({ team: p.team, number: p.number, x: p.x, y: p.y, isBall: p.isBall });
+      ps.push({ team: p.team, name: p.name, custom: p.custom, slot: p.slot,
+                x: r4(p.x), y: r4(p.y), isBall: p.isBall, onField: p.onField, gk: p.gk });
     }
-    return { formation: currentFormation, players: ps, strokes: strokes };
+    return { v: 2, formation: currentFormation, showNames: showNames,
+             players: ps, strokes: strokes };
   }
 
   function deserialize(data) {
     clearPlayers();
-    currentFormation = data.formation || "442";
+    currentFormation = FORMATIONS[data.formation] ? data.formation : "442";
     var ps = data.players || [];
     for (var i = 0; i < ps.length; i++) {
-      makePlayer(ps[i].team, ps[i].number, ps[i].x, ps[i].y, ps[i].isBall);
+      var d = ps[i];
+      var name = d.name, slot = (typeof d.slot === "number") ? d.slot : -1;
+      if (!name && !d.isBall) {
+        // v1 layouts stored shirt numbers in slot order; recover a position name.
+        if (typeof d.number === "number") slot = d.number - 1;
+        name = slotLabel(currentFormation, slot, d.team);
+      }
+      makePlayer({
+        team: d.team, name: name, custom: !!d.custom, slot: slot,
+        x: d.x, y: d.y, isBall: d.isBall,
+        onField: d.onField !== false,
+        gk: (d.gk === undefined) ? (slot === 0 && !d.isBall) : !!d.gk
+      });
     }
     strokes = data.strokes || [];
-    positionAll();
+    showNames = (data.showNames !== false);
+    setBodyClasses();
+    layoutPlayers();
     redrawAll();
     updateToolbar();
+  }
+
+  // ---------- Naming ----------
+  // queue is whoever comes after this player, so "Save & next" can walk a whole
+  // team without going back to the squad list between each one.
+  function openRename(p, queue) {
+    setSheetTitle("Name this " + (p.team === "home" ? "blue" : "red") + " player");
+    sheetBody.innerHTML = "";
+
+    var input = document.createElement("input");
+    input.type = "text";
+    input.setAttribute("placeholder", "Player name");
+    input.value = p.name;
+    sheetBody.appendChild(input);
+
+    // Whatever is already there comes up selected, so typing replaces it instead
+    // of the coach having to clear the box first. iOS puts its own caret in on tap,
+    // so re-select after the browser has finished handling the touch.
+    function selectText() {
+      try {
+        if (input.setSelectionRange) input.setSelectionRange(0, String(input.value).length);
+        else if (input.select) input.select();
+      } catch (e) {}
+    }
+    input.onfocus = function () { setTimeout(selectText, 0); };
+
+    var hint = document.createElement("div");
+    hint.className = "hint";
+    hint.appendChild(document.createTextNode(
+      "Shown under the player's dot. Leave it blank, or keep the position name, " +
+      "to let it follow the formation again."));
+    sheetBody.appendChild(hint);
+
+    function commit() {
+      var v = trim(input.value);
+      var def = slotLabel(currentFormation, p.slot, p.team);
+      // Clearing it - or leaving the position name alone - hands the name back to
+      // the formation, so it updates as the player moves around the shape.
+      if (!v || v === def) { p.custom = false; p.name = def; }
+      else { p.name = v; p.custom = true; }
+      paintPlayer(p);
+      layoutPlayers();
+    }
+
+    var done = document.createElement("button");
+    done.className = "btn primary full";
+    done.appendChild(document.createTextNode("Done"));
+    done.onclick = function () { commit(); closeOverlay(); };
+    sheetBody.appendChild(done);
+
+    if (queue && queue.length) {
+      var next = document.createElement("button");
+      next.className = "btn full";
+      next.appendChild(document.createTextNode("Save & next"));
+      next.onclick = function () { commit(); openRename(queue[0], queue.slice(1)); };
+      sheetBody.appendChild(next);
+    }
+    openOverlay();
+    // Focus only works once the sheet is actually displayed, and only from inside
+    // a user gesture - which is exactly where openRename is called from.
+    try { input.focus(); } catch (e) {}
+    selectText();
+  }
+
+  function openSquad() {
+    setSheetTitle("Squad");
+    sheetBody.innerHTML = "";
+    squadSection("home", "Blue");
+    squadSection("away", "Red");
+    openOverlay();
+  }
+
+  function squadSection(team, label) {
+    var h = document.createElement("div");
+    h.className = "hint";
+    h.appendChild(document.createTextNode(label + " — tap Rename to change a name"));
+    sheetBody.appendChild(h);
+    var list = teamPlayers(team);
+    for (var i = 0; i < list.length; i++) squadRow(list[i], list.slice(i + 1));
+  }
+
+  function squadRow(p, rest) {
+    var row = document.createElement("div");
+    row.className = "rowItem";
+    var nm = document.createElement("div");
+    nm.className = "name";
+    nm.appendChild(document.createTextNode(p.name + (p.onField ? "" : "  — bench")));
+    row.appendChild(nm);
+    var btn = document.createElement("button");
+    btn.className = "btn primary";
+    btn.appendChild(document.createTextNode("Rename"));
+    btn.onclick = function () { openRename(p, rest); };
+    row.appendChild(btn);
+    sheetBody.appendChild(row);
+  }
+
+  function setSheetTitle(t) {
+    sheetTitle.innerHTML = "";
+    sheetTitle.appendChild(document.createTextNode(t));
   }
 
   function openOverlay() { overlay.className = "open"; }
@@ -811,17 +1276,28 @@
     save.onclick = function () {
       var name = trim(input.value);
       if (!name) { input.focus(); return; }
-      doSave(name);
-      closeOverlay();
+      if (doSave(name)) { closeOverlay(); return; }
+      // Storage is full: the layout works this session but would vanish on
+      // relaunch, so keep the sheet open and say so rather than looking saved.
+      hint.className = "hint warn";
+      hint.innerHTML = "";
+      hint.appendChild(document.createTextNode(
+        "This iPad's storage is full, so \u201C" + name + "\u201D will be lost when the app closes. " +
+        "Delete a layout under Load to free space, then save again."));
     };
     sheetBody.appendChild(save);
     openOverlay();
   }
 
+  // Returns false if the layout only made it into memory - see storeSet.
   function doSave(name) {
-    storeSet(LAYOUT_PREFIX + name, JSON.stringify(serialize()));
+    var ok = storeSet(LAYOUT_PREFIX + name, JSON.stringify(serialize()));
     var idx = getIndex();
-    if (idx.indexOf(name) === -1) { idx.push(name); setIndex(idx); }
+    if (idx.indexOf(name) === -1) {
+      idx.push(name);
+      if (!setIndex(idx)) ok = false;
+    }
+    return ok;
   }
 
   function openLoad() {
@@ -884,25 +1360,20 @@
     sizeCanvas(committed, committedCtx);
     computePitch();
     drawField();
-    positionAll();
+    layoutPlayers();
     redrawAll();
   }
 
   // ---------- Wire up ----------
-  function bindTouch(target, down, move, up) {
-    target.addEventListener("touchstart", down, false);
-    target.addEventListener("touchmove", move, false);
-    target.addEventListener("touchend", up, false);
-    target.addEventListener("touchcancel", up, false);
-    target.addEventListener("mousedown", down, false);
-  }
-
-  // Player drag: mouse move/up on document so drag continues off the token
+  // A drag starts on either surface but is tracked on document, so it survives the
+  // token being reparented from the bench to the player layer mid-gesture.
   playerLayer.addEventListener("touchstart", onPlayerDown, false);
-  playerLayer.addEventListener("touchmove", onPlayerMove, false);
-  playerLayer.addEventListener("touchend", onPlayerUp, false);
-  playerLayer.addEventListener("touchcancel", onPlayerUp, false);
+  bench.addEventListener("touchstart", onPlayerDown, false);
   playerLayer.addEventListener("mousedown", onPlayerDown, false);
+  bench.addEventListener("mousedown", onPlayerDown, false);
+  document.addEventListener("touchmove", onPlayerMove, false);
+  document.addEventListener("touchend", onPlayerUp, false);
+  document.addEventListener("touchcancel", onPlayerUp, false);
   document.addEventListener("mousemove", onPlayerMove, false);
   document.addEventListener("mouseup", onPlayerUp, false);
 
@@ -937,19 +1408,27 @@
   document.getElementById("btnDelHome").onclick = function () { removeTeamPlayer("home"); };
   document.getElementById("btnAddAway").onclick = function () { addTeamPlayer("away"); };
   document.getElementById("btnDelAway").onclick = function () { removeTeamPlayer("away"); };
+  document.getElementById("btnBench").onclick = function () { setBench(!benchOpen); };
+  document.getElementById("btnNames").onclick = function () {
+    showNames = !showNames; setBodyClasses(); updateToolbar();
+  };
+  document.getElementById("btnSquad").onclick = openSquad;
+  document.getElementById("benchClose").onclick = function () { setBench(false); };
   document.getElementById("btnBall").onclick = toggleBall;
   document.getElementById("btnReset").onclick = resetPlayers;
   document.getElementById("btnSave").onclick = openSave;
   document.getElementById("btnLoad").onclick = openLoad;
-  document.getElementById("btnHide").onclick = function () { body.className = "collapsed"; relayout(); };
-  document.getElementById("menuBtn").onclick = function () { body.className = ""; relayout(); };
+  document.getElementById("btnHide").onclick = function () { collapsed = true; setBodyClasses(); relayout(); };
+  document.getElementById("menuBtn").onclick = function () { collapsed = false; setBodyClasses(); relayout(); };
   document.getElementById("sheetClose").onclick = closeOverlay;
   overlay.onclick = function (e) { if (e.target === overlay) closeOverlay(); };
 
-  // Prevent page scroll / rubber-band, but allow scrolling inside the modal sheet.
+  // Prevent page scroll / rubber-band, but allow scrolling inside the modal sheet
+  // and a bench that has overflowed. A drag already called preventDefault on its
+  // own touchstart, so picking a player up never scrolls the drawer instead.
   document.addEventListener("touchmove", function (e) {
     var n = e.target;
-    while (n) { if (n === sheet) return; n = n.parentNode; }
+    while (n) { if (n === sheet || n === bench) return; n = n.parentNode; }
     e.preventDefault();
   }, false);
 
@@ -957,8 +1436,10 @@
   window.addEventListener("orientationchange", function () { setTimeout(relayout, 250); }, false);
 
   // ---------- Boot ----------
+  buildSquad();
+  makePlayer({ team: "ball", isBall: true, x: 0.5, y: 0.5 });
   applyFormation("442");
-  makePlayer("ball", 0, 0.5, 0.5, true);
+  setBodyClasses();
   relayout();
   setMode("move");
   updateToolbar();
